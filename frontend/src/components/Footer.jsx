@@ -1,5 +1,7 @@
 import React from 'react';
-import { Compass, MapPin, Heart, ArrowUp, Code2 } from 'lucide-react';
+import { Compass, ArrowUp } from 'lucide-react';
+
+const CURRENT_YEAR = new Date().getFullYear();
 
 export default function Footer() {
   const scrollToTop = () => {
@@ -109,7 +111,7 @@ export default function Footer() {
         {/* Bottom Bar */}
         <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-forest-400">
           <p className="flex items-center gap-1">
-            <span>© {new Date().getFullYear()} GeoBite. Engineered for Engineering Placement Excellence.</span>
+            <span>© {CURRENT_YEAR} GeoBite. Engineered for Engineering Placement Excellence.</span>
           </p>
           <div className="flex items-center gap-4">
             <button

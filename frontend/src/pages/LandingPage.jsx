@@ -5,34 +5,32 @@ import CategorySection from '../components/CategorySection';
 import MapPreviewPlaceholder from '../components/MapPreviewPlaceholder';
 import ArchitectureSection from '../components/ArchitectureSection';
 import Footer from '../components/Footer';
+import { fetchHealth } from '../services/placesApi';
 
 export default function LandingPage() {
-  const [activeCity, setActiveCity] = useState('San Francisco, CA');
+  const [activeCity, setActiveCity] = useState('Bengaluru, India');
   const [selectedCategory, setSelectedCategory] = useState('food');
   const [healthStatus, setHealthStatus] = useState({ online: false, data: null });
   const [searchNotification, setSearchNotification] = useState(null);
 
-  // Check backend health status
+  // Check backend health status using shared service
   useEffect(() => {
-    const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+    let isMounted = true;
     const checkHealth = async () => {
       try {
-        const response = await fetch(`${apiBase}/health`);
-        if (response.ok) {
-          const data = await response.json();
-          setHealthStatus({ online: true, data });
-        } else {
-          setHealthStatus({ online: false, data: null });
-        }
-      } catch (err) {
-        // Backend might still be starting or unreachable
-        setHealthStatus({ online: false, data: null });
+        const data = await fetchHealth();
+        if (isMounted) setHealthStatus({ online: true, data });
+      } catch {
+        if (isMounted) setHealthStatus({ online: false, data: null });
       }
     };
 
     checkHealth();
     const interval = setInterval(checkHealth, 15000);
-    return () => clearInterval(interval);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, []);
 
   const handleSearch = (city, radius) => {

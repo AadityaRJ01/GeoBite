@@ -1,17 +1,11 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { 
-  Map as MapIcon, 
-  Navigation, 
-  Layers, 
-  Maximize2, 
-  Sliders, 
-  Pin, 
-  CheckCircle2, 
-  Clock, 
   Route, 
   Compass, 
   Sparkles,
-  Info
+  Clock,
+  ArrowRight
 } from 'lucide-react';
 
 const MOCK_WAYPOINTS = [
@@ -38,10 +32,17 @@ export default function MapPreviewPlaceholder({ activeCity, selectedCategory }) 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Section Header */}
         <div className="text-center max-w-3xl mx-auto mb-12">
-          {/* Explicit Placeholder Notice Tag */}
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-900 text-xs sm:text-sm font-semibold mb-4 shadow-sm">
-            <Info className="w-4 h-4 text-amber-600 shrink-0" />
-            <span>Map Preview Mockup — Interactive Engine & Tile Integration Scheduled for Day 2</span>
+          {/* Live Day 3 Banner */}
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-teal-50 border border-teal-200 text-teal-900 text-xs sm:text-sm font-semibold mb-4 shadow-sm">
+            <Sparkles className="w-4 h-4 text-teal-600 shrink-0" />
+            <span>Day 3 Milestone Live: Frontend-Backend Integration Complete!</span>
+            <Link
+              to="/discover"
+              className="ml-2 inline-flex items-center gap-1 text-teal-700 hover:text-teal-900 underline font-bold"
+            >
+              <span>Explore Live Discovery Map</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
           </div>
 
           <h2 className="text-3xl sm:text-4xl font-extrabold text-forest-950 tracking-tight">

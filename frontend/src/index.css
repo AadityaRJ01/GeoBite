@@ -1,3 +1,4 @@
+@import 'leaflet/dist/leaflet.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -48,4 +49,29 @@
 .bg-geo-dots {
   background-image: radial-gradient(rgba(39, 89, 71, 0.12) 1px, transparent 1px);
   background-size: 24px 24px;
+}
+
+/* Leaflet map customization */
+.leaflet-container {
+  font-family: inherit;
+  z-index: 10;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.leaflet-popup-content-wrapper {
+  border-radius: 16px;
+  padding: 4px;
+  box-shadow: 0 10px 25px -5px rgba(13, 33, 27, 0.18), 0 8px 10px -6px rgba(13, 33, 27, 0.1);
+  border: 1px solid rgba(47, 112, 89, 0.15);
+}
+
+.leaflet-popup-content {
+  margin: 10px 14px;
+  line-height: 1.4;
+}
+
+.leaflet-popup-tip {
+  background: white;
 }
