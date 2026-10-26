@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Compass, MapPin, Sparkles, Activity, Menu, X, ArrowUpRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Compass, Activity, Menu, X, ArrowUpRight, MapPin } from 'lucide-react';
 
 export default function Navbar({ healthStatus }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -25,7 +26,7 @@ export default function Navbar({ healthStatus }) {
         <div className="flex items-center justify-between h-20">
           {/* Logo */}
           <div className="flex items-center gap-3">
-            <a href="#hero" className="flex items-center gap-2.5 group">
+            <Link to="/" className="flex items-center gap-2.5 group">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-forest-900 to-forest-800 flex items-center justify-center shadow-md group-hover:scale-105 transition-transform duration-200 border border-teal-500/30">
                 <div className="relative">
                   <Compass className="w-5 h-5 text-teal-400 group-hover:rotate-45 transition-transform duration-500" />
@@ -43,19 +44,29 @@ export default function Navbar({ healthStatus }) {
                   Geospatial Discovery & Routing
                 </span>
               </div>
-            </a>
+            </Link>
           </div>
 
           {/* Desktop Navigation Links */}
           <nav className="hidden md:flex items-center gap-8">
+            <Link
+              to="/discover"
+              className="text-sm font-semibold text-teal-700 hover:text-forest-900 transition-colors flex items-center gap-1.5"
+            >
+              <MapPin className="w-4 h-4 text-teal-600" />
+              <span>Discover Places</span>
+              <span className="px-1.5 py-0.2 text-[9px] rounded-full bg-teal-100 text-teal-800 font-bold">
+                Live API
+              </span>
+            </Link>
             <a
-              href="#categories"
+              href="/#categories"
               className="text-sm font-medium text-slate-600 hover:text-forest-900 transition-colors"
             >
               Categories
             </a>
             <a
-              href="#map-preview"
+              href="/#map-preview"
               className="text-sm font-medium text-slate-600 hover:text-forest-900 transition-colors flex items-center gap-1.5"
             >
               Route Engine
@@ -64,7 +75,7 @@ export default function Navbar({ healthStatus }) {
               </span>
             </a>
             <a
-              href="#architecture"
+              href="/#architecture"
               className="text-sm font-medium text-slate-600 hover:text-forest-900 transition-colors"
             >
               Architecture
@@ -99,13 +110,13 @@ export default function Navbar({ healthStatus }) {
 
           {/* Desktop CTA */}
           <div className="hidden md:flex items-center gap-3">
-            <a
-              href="#map-preview"
+            <Link
+              to="/discover"
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-forest-900 text-white text-sm font-semibold hover:bg-forest-800 transition-all shadow-soft-sm hover:shadow-soft-md active:scale-95"
             >
               <span>Explore Platform</span>
               <ArrowUpRight className="w-4 h-4 text-teal-400" />
-            </a>
+            </Link>
           </div>
 
           {/* Mobile Menu Button */}
@@ -139,35 +150,42 @@ export default function Navbar({ healthStatus }) {
               {healthStatus?.online ? 'Express Healthy (5000)' : 'Reconnecting'}
             </span>
           </div>
+          <Link
+            to="/discover"
+            onClick={() => setMobileMenuOpen(false)}
+            className="block px-3 py-2 rounded-lg text-base font-bold text-teal-800 bg-teal-50 hover:bg-teal-100"
+          >
+            Discover Places (Live API)
+          </Link>
           <a
-            href="#categories"
+            href="/#categories"
             onClick={() => setMobileMenuOpen(false)}
             className="block px-3 py-2 rounded-lg text-base font-medium text-slate-800 hover:bg-forest-50"
           >
             Categories
           </a>
           <a
-            href="#map-preview"
+            href="/#map-preview"
             onClick={() => setMobileMenuOpen(false)}
             className="block px-3 py-2 rounded-lg text-base font-medium text-slate-800 hover:bg-forest-50"
           >
             Route Engine Preview
           </a>
           <a
-            href="#architecture"
+            href="/#architecture"
             onClick={() => setMobileMenuOpen(false)}
             className="block px-3 py-2 rounded-lg text-base font-medium text-slate-800 hover:bg-forest-50"
           >
             System Architecture
           </a>
           <div className="pt-2">
-            <a
-              href="#map-preview"
+            <Link
+              to="/discover"
               onClick={() => setMobileMenuOpen(false)}
               className="block w-full text-center py-2.5 rounded-xl bg-forest-900 text-white font-semibold text-sm"
             >
               Explore Platform
-            </a>
+            </Link>
           </div>
         </div>
       )}

@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
-import { Search, MapPin, Navigation, Sparkles, SlidersHorizontal, ArrowRight, ShieldCheck, Zap } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Search, MapPin, Navigation, Sparkles, SlidersHorizontal, ShieldCheck, Zap } from 'lucide-react';
 
 const POPULAR_DESTINATIONS = [
+  { name: 'Bengaluru, India', coords: '12.9716° N, 77.5946° E', count: '18 verified spots' },
   { name: 'Tokyo, Japan', coords: '35.6762° N, 139.6503° E', count: '1.2k+ spots' },
   { name: 'San Francisco, CA', coords: '37.7749° N, 122.4194° W', count: '850+ spots' },
-  { name: 'Bengaluru, India', coords: '12.9716° N, 77.5946° E', count: '940+ spots' },
   { name: 'Zürich, Switzerland', coords: '47.3769° N, 8.5417° E', count: '410+ spots' },
 ];
 
 export default function HeroSection({ onSearch, activeCity, setActiveCity }) {
+  const navigate = useNavigate();
   const [searchInput, setSearchInput] = useState('');
   const [selectedRadius, setSelectedRadius] = useState('5 km');
   const [isLocating, setIsLocating] = useState(false);
@@ -17,6 +19,7 @@ export default function HeroSection({ onSearch, activeCity, setActiveCity }) {
     setActiveCity(city.name);
     setSearchInput(city.name);
     if (onSearch) onSearch(city.name, selectedRadius);
+    navigate('/discover');
   };
 
   const handleSearchSubmit = (e) => {
@@ -24,6 +27,7 @@ export default function HeroSection({ onSearch, activeCity, setActiveCity }) {
     const query = searchInput.trim() || activeCity;
     setActiveCity(query);
     if (onSearch) onSearch(query, selectedRadius);
+    navigate('/discover');
   };
 
   const handleCurrentLocation = () => {

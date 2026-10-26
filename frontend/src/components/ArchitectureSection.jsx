@@ -1,5 +1,5 @@
 import React from 'react';
-import { Server, Layout, Cpu, Compass, CheckCircle2, ShieldCheck, Zap } from 'lucide-react';
+import { Server, Layout, Cpu, CheckCircle2, Zap } from 'lucide-react';
 
 const TECH_PILLARS = [
   {
