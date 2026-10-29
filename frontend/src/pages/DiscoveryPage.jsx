@@ -8,8 +8,9 @@ import {
   ArrowLeft,
   RefreshCw
 } from 'lucide-react';
-import { fetchPlaces, fetchHealth } from '../services/placesApi';
+import { fetchPlaces, fetchNearbyPlaces, fetchHealth } from '../services/placesApi';
 import DiscoveryControls from '../components/discovery/DiscoveryControls';
+import NearbySearchControl from '../components/discovery/NearbySearchControl';
 import PlaceList from '../components/discovery/PlaceList';
 import InteractiveMap from '../components/discovery/InteractiveMap';
 import { LoadingSkeleton, ErrorState } from '../components/discovery/StateViews';
@@ -25,6 +26,11 @@ export default function DiscoveryPage() {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [sortBy, setSortBy] = useState('rating-desc');
 
+  // PostGIS Nearby Search State
+  const [isNearbyActive, setIsNearbyActive] = useState(false);
+  const [nearbyParams, setNearbyParams] = useState(null);
+  const [nearbyLoading, setNearbyLoading] = useState(false);
+
   // Interactive Selection State
   const [selectedPlaceId, setSelectedPlaceId] = useState(null);
   const [focusTarget, setFocusTarget] = useState(null);
@@ -35,8 +41,62 @@ export default function DiscoveryPage() {
   // Backend Health Status
   const [backendStatus, setBackendStatus] = useState({ online: false, data: null });
 
+  // Handle nearby search trigger
+  const handleNearbySearch = useCallback(async ({ lat, lng, radius, category }) => {
+    setNearbyLoading(true);
+    setError(null);
+    try {
+      const data = await fetchNearbyPlaces({
+        lat,
+        lng,
+        radius,
+        category: category !== 'all' ? category : undefined,
+      });
+      setPlaces(data.places || []);
+      setIsNearbyActive(true);
+      setNearbyParams({ lat, lng, radius, category });
+      setSortBy('distance-asc');
+      if (data.places && data.places.length > 0) {
+        setSelectedPlaceId(data.places[0].id);
+      } else {
+        setSelectedPlaceId(null);
+      }
+    } catch (err) {
+      console.error('Nearby search failed:', err);
+      setError(err.message || 'Failed to complete nearby search.');
+    } finally {
+      setNearbyLoading(false);
+    }
+  }, []);
+
+  // Handle clear nearby search to return to all-places discovery
+  const handleClearNearby = useCallback(async () => {
+    setIsNearbyActive(false);
+    setNearbyParams(null);
+    setSortBy('rating-desc');
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await fetchPlaces();
+      setPlaces(data.places || []);
+      if (data.places && data.places.length > 0) {
+        setSelectedPlaceId(data.places[0].id);
+      }
+    } catch (err) {
+      console.error('Failed to reload places:', err);
+      setError(err.message || 'Failed to reload places.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   // Manual refresh handler
   const handleRefresh = useCallback(async () => {
+    if (isNearbyActive && nearbyParams) {
+      handleNearbySearch(nearbyParams);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
@@ -51,7 +111,7 @@ export default function DiscoveryPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isNearbyActive, nearbyParams, handleNearbySearch]);
 
   // Check backend health and load places on mount
   useEffect(() => {
@@ -122,6 +182,12 @@ export default function DiscoveryPage() {
 
     // Sorting
     result.sort((a, b) => {
+      if (sortBy === 'distance-asc') {
+        return (a.distanceMeters ?? Infinity) - (b.distanceMeters ?? Infinity);
+      }
+      if (sortBy === 'distance-desc') {
+        return (b.distanceMeters ?? 0) - (a.distanceMeters ?? 0);
+      }
       if (sortBy === 'rating-desc') {
         return (b.averageRating || 0) - (a.averageRating || 0);
       }
@@ -167,13 +233,14 @@ export default function DiscoveryPage() {
   const handleClearFilters = useCallback(() => {
     setSearchQuery('');
     setSelectedCategory('all');
-    setSortBy('rating-desc');
-  }, []);
+    setSortBy(isNearbyActive ? 'distance-asc' : 'rating-desc');
+  }, [isNearbyActive]);
 
+  const defaultSort = isNearbyActive ? 'distance-asc' : 'rating-desc';
   const isFiltered =
     Boolean(searchQuery.trim()) ||
     selectedCategory !== 'all' ||
-    sortBy !== 'rating-desc';
+    sortBy !== defaultSort;
 
   return (
     <div className="min-h-screen flex flex-col bg-sand-50 selection:bg-teal-500 selection:text-white">
@@ -296,6 +363,19 @@ export default function DiscoveryPage() {
           </div>
         </div>
 
+        {/* PostGIS Nearby Search Control */}
+        <NearbySearchControl
+          onSearchNearby={handleNearbySearch}
+          onClearNearby={handleClearNearby}
+          isNearbyActive={isNearbyActive}
+          activeParams={nearbyParams}
+          activeResultCount={filteredPlaces.length}
+          loading={nearbyLoading}
+          availableCategories={availableCategories}
+          selectedCategory={selectedCategory}
+          onCategoryChange={setSelectedCategory}
+        />
+
         {/* Discovery Controls (Search, Category Pills, Sort) */}
         <div className="mb-6">
           <DiscoveryControls
@@ -309,11 +389,12 @@ export default function DiscoveryPage() {
             onClearFilters={handleClearFilters}
             totalCount={places.length}
             filteredCount={filteredPlaces.length}
+            isNearbyActive={isNearbyActive}
           />
         </div>
 
         {/* Error State */}
-        {error && !loading && (
+        {error && !loading && !nearbyLoading && (
           <ErrorState message={error} onRetry={handleRefresh} />
         )}
 
@@ -327,7 +408,7 @@ export default function DiscoveryPage() {
               }`}
             >
               <div className="lg:max-h-[calc(100vh-210px)] lg:overflow-y-auto lg:pr-2">
-                {loading ? (
+                {loading || nearbyLoading ? (
                   <LoadingSkeleton count={5} />
                 ) : (
                   <PlaceList
@@ -353,6 +434,9 @@ export default function DiscoveryPage() {
                 selectedPlaceId={selectedPlaceId}
                 onSelectPlace={handleSelectPlace}
                 focusTarget={focusTarget}
+                searchCenter={nearbyParams ? { lat: nearbyParams.lat, lng: nearbyParams.lng } : null}
+                searchRadius={nearbyParams?.radius || 5}
+                isNearbyActive={isNearbyActive}
               />
             </div>
           </div>

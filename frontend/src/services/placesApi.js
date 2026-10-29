@@ -129,6 +129,82 @@ export async function fetchPlaces(params = {}) {
 }
 
 /**
+ * Fetch places nearby a geographic point using PostGIS spatial search.
+ * @param {Object} params - Query parameters
+ * @param {number|string} params.lat - Latitude (-90 to 90)
+ * @param {number|string} params.lng - Longitude (-180 to 180)
+ * @param {number|string} [params.radius=5] - Radius in km (0.1 to 50)
+ * @param {string} [params.category] - Optional category filter
+ * @param {number|string} [params.limit=50] - Result limit
+ * @returns {Promise<{ places: Array, count: number, success: boolean }>}
+ */
+export async function fetchNearbyPlaces(params = {}) {
+  const { lat, lng, radius, category, limit } = params;
+
+  if (lat === undefined || lat === null || isNaN(Number(lat))) {
+    throw new ApiError('A valid latitude (lat) is required for nearby search.', 400);
+  }
+  if (lng === undefined || lng === null || isNaN(Number(lng))) {
+    throw new ApiError('A valid longitude (lng) is required for nearby search.', 400);
+  }
+
+  const query = new URLSearchParams();
+  query.set('lat', String(lat));
+  query.set('lng', String(lng));
+
+  if (radius !== undefined && radius !== null) {
+    query.set('radius', String(radius));
+  }
+  if (category && category !== 'all') {
+    query.set('category', category);
+  }
+  if (limit !== undefined && limit !== null) {
+    query.set('limit', String(limit));
+  }
+
+  const response = await fetchJson(`/places/nearby?${query.toString()}`);
+
+  const rawPlaces = Array.isArray(response.data) ? response.data : [];
+
+  const validatedPlaces = rawPlaces.map((place) => {
+    const latNum = typeof place.latitude === 'number' ? place.latitude : parseFloat(place.latitude);
+    const lngNum = typeof place.longitude === 'number' ? place.longitude : parseFloat(place.longitude);
+    const hasValidCoordinates =
+      !isNaN(latNum) &&
+      !isNaN(lngNum) &&
+      latNum >= -90 &&
+      latNum <= 90 &&
+      lngNum >= -180 &&
+      lngNum <= 180;
+
+    const distMeters =
+      typeof place.distanceMeters === 'number'
+        ? Math.round(place.distanceMeters)
+        : Math.round(Number(place.distanceMeters || 0));
+
+    const distKm =
+      typeof place.distanceKm === 'number'
+        ? place.distanceKm
+        : Number((distMeters / 1000).toFixed(2));
+
+    return {
+      ...place,
+      latitude: latNum,
+      longitude: lngNum,
+      hasValidCoordinates,
+      distanceMeters: distMeters,
+      distanceKm: distKm,
+    };
+  });
+
+  return {
+    places: validatedPlaces,
+    count: response.count ?? validatedPlaces.length,
+    success: response.success ?? true,
+  };
+}
+
+/**
  * Fetch a single place by UUID
  * @param {string} id - Place UUID
  * @returns {Promise<Object>}
