@@ -223,4 +223,32 @@ export async function fetchHealth() {
   return await fetchJson('/health');
 }
 
+/**
+ * Optimize a multi-stop route using Baseline, Nearest Neighbor, and 2-opt algorithms.
+ * @param {Object} params
+ * @param {string[]} params.placeIds - Array of 2–10 place UUIDs
+ * @param {string} [params.startPlaceId] - Optional UUID of the starting place (must be in placeIds)
+ * @returns {Promise<Object>} Full optimization comparison result
+ */
+export async function optimizeRoute({ placeIds, startPlaceId } = {}) {
+  if (!Array.isArray(placeIds) || placeIds.length < 2) {
+    throw new ApiError('At least 2 place IDs are required for route optimization.', 400);
+  }
+  if (placeIds.length > 10) {
+    throw new ApiError('A maximum of 10 places can be optimized per itinerary.', 400);
+  }
+
+  const body = { placeIds };
+  if (startPlaceId) body.startPlaceId = startPlaceId;
+
+  const response = await fetchJson('/routes/optimize', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  return response.data || response;
+}
+
 export { API_BASE_URL };
+
