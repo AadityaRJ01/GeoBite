@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Compass, Star, Clock } from 'lucide-react';
+import { Compass, Star, Clock, Navigation } from 'lucide-react';
 
 // Sensible demo fallback center (Bengaluru) when no places exist or valid coordinates are zero
 const DEFAULT_CENTER = [12.9716, 77.5946];
@@ -69,15 +69,85 @@ function createCustomMarkerIcon(category, isSelected) {
   });
 }
 
+function createSearchCenterMarkerIcon() {
+  const html = `
+    <div style="
+      position: relative;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transform: translate(-50%, -50%);
+    ">
+      <span style="
+        position: absolute;
+        width: 32px;
+        height: 32px;
+        border-radius: 9999px;
+        background-color: rgba(13, 148, 136, 0.35);
+        animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+      "></span>
+      <div style="
+        position: relative;
+        width: 18px;
+        height: 18px;
+        border-radius: 9999px;
+        background-color: #0f766e;
+        border: 3px solid #ffffff;
+        box-shadow: 0 0 10px rgba(15, 118, 110, 0.7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      ">
+        <div style="width: 4px; height: 4px; border-radius: 9999px; background-color: #ffffff;"></div>
+      </div>
+    </div>
+  `;
+
+  return L.divIcon({
+    html,
+    className: 'geobite-center-marker',
+    iconSize: [32, 32],
+    iconAnchor: [16, 16],
+    popupAnchor: [0, -16],
+  });
+}
+
 /**
  * Controller sub-component to handle map viewport fitting and programmatic panning
  */
-function MapViewController({ places, focusTarget }) {
+function MapViewController({ places, focusTarget, searchCenter, searchRadius, isNearbyActive }) {
   const map = useMap();
   const initialFitDone = useRef(false);
 
-  // Initial fit to bounds when valid places load
+  // When nearby search is active, fit to search center & places
   useEffect(() => {
+    if (!isNearbyActive || !searchCenter || typeof searchCenter.lat !== 'number' || typeof searchCenter.lng !== 'number') {
+      return;
+    }
+
+    const centerLatLng = L.latLng(searchCenter.lat, searchCenter.lng);
+    const radiusMeters = (searchRadius || 5) * 1000;
+    // Calculate geographic bounds of radius circle
+    const circleBounds = centerLatLng.toBounds(radiusMeters);
+
+    const validCoords = (places || [])
+      .filter((p) => p.hasValidCoordinates)
+      .map((p) => [p.latitude, p.longitude]);
+
+    if (validCoords.length > 0) {
+      const placesBounds = L.latLngBounds(validCoords);
+      const combined = circleBounds.extend(placesBounds);
+      map.fitBounds(combined, { padding: [40, 40], maxZoom: 15 });
+    } else {
+      map.fitBounds(circleBounds, { padding: [40, 40], maxZoom: 15 });
+    }
+  }, [isNearbyActive, searchCenter, searchRadius, places, map]);
+
+  // Initial fit to bounds when valid places load (non-nearby mode)
+  useEffect(() => {
+    if (isNearbyActive) return;
     if (!places || places.length === 0) return;
 
     const validCoords = places
@@ -89,7 +159,7 @@ function MapViewController({ places, focusTarget }) {
       map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
       initialFitDone.current = true;
     }
-  }, [places, map]);
+  }, [places, isNearbyActive, map]);
 
   // Smoothly fly to selected place when focused via card click or external trigger
   useEffect(() => {
@@ -108,6 +178,9 @@ export default function InteractiveMap({
   selectedPlaceId,
   onSelectPlace,
   focusTarget,
+  searchCenter = null,
+  searchRadius = 5,
+  isNearbyActive = false,
 }) {
   const markerRefs = useRef({});
 
@@ -133,11 +206,14 @@ export default function InteractiveMap({
 
   // Determine initial center
   const initialCenter = useMemo(() => {
+    if (isNearbyActive && searchCenter && typeof searchCenter.lat === 'number') {
+      return [searchCenter.lat, searchCenter.lng];
+    }
     if (validPlaces.length > 0) {
       return [validPlaces[0].latitude, validPlaces[0].longitude];
     }
     return DEFAULT_CENTER;
-  }, [validPlaces]);
+  }, [isNearbyActive, searchCenter, validPlaces]);
 
   // Open popup for selected place when selected externally
   useEffect(() => {
@@ -148,6 +224,14 @@ export default function InteractiveMap({
     }
   }, [selectedPlaceId]);
 
+  const hasValidSearchCenter =
+    isNearbyActive &&
+    searchCenter &&
+    typeof searchCenter.lat === 'number' &&
+    typeof searchCenter.lng === 'number' &&
+    !isNaN(searchCenter.lat) &&
+    !isNaN(searchCenter.lng);
+
   return (
     <div className="relative w-full h-[450px] lg:h-[calc(100vh-210px)] min-h-[420px] rounded-3xl overflow-hidden border border-forest-200/90 shadow-soft-md bg-sand-100 flex flex-col">
       {/* Top Map Stats Badge */}
@@ -155,6 +239,7 @@ export default function InteractiveMap({
         <Compass className="w-3.5 h-3.5 text-teal-600 animate-spin-slow" />
         <span>
           {validPlaces.length} {validPlaces.length === 1 ? 'Marker' : 'Markers'} Active
+          {isNearbyActive && ` (${searchRadius} km radius)`}
         </span>
       </div>
 
@@ -175,7 +260,47 @@ export default function InteractiveMap({
           places={validPlaces}
           selectedPlace={selectedPlace}
           focusTarget={focusTarget}
+          searchCenter={searchCenter}
+          searchRadius={searchRadius}
+          isNearbyActive={isNearbyActive}
         />
+
+        {/* Spatial Radius Circle and Search Center Pin */}
+        {hasValidSearchCenter && (
+          <>
+            <Circle
+              center={[searchCenter.lat, searchCenter.lng]}
+              radius={(searchRadius || 5) * 1000}
+              pathOptions={{
+                color: '#0d9488',
+                fillColor: '#14b8a6',
+                fillOpacity: 0.08,
+                weight: 2,
+                dashArray: '6, 6',
+              }}
+            />
+            <Marker
+              position={[searchCenter.lat, searchCenter.lng]}
+              icon={createSearchCenterMarkerIcon()}
+              zIndexOffset={1000}
+            >
+              <Popup>
+                <div className="p-1 max-w-[200px] text-center">
+                  <div className="text-xs font-bold text-forest-950 flex items-center justify-center gap-1">
+                    <Navigation className="w-3.5 h-3.5 text-teal-600 rotate-45" />
+                    <span>Search Origin Center</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 font-mono mt-0.5">
+                    {searchCenter.lat.toFixed(4)}°, {searchCenter.lng.toFixed(4)}°
+                  </p>
+                  <div className="mt-1 text-[10px] font-semibold text-teal-800 bg-teal-50 py-0.5 px-2 rounded-full border border-teal-200">
+                    Radius: {searchRadius} km
+                  </div>
+                </div>
+              </Popup>
+            </Marker>
+          </>
+        )}
 
         {validPlaces.map((place) => {
           const isSelected = place.id === selectedPlaceId;
@@ -218,6 +343,18 @@ export default function InteractiveMap({
                       </span>
                     )}
                   </div>
+
+                  {/* PostGIS Distance Badge */}
+                  {typeof place.distanceMeters === 'number' && (
+                    <div className="flex items-center gap-1.5 px-2 py-0.5 mb-2 rounded-md bg-teal-50 border border-teal-200 text-teal-900 text-xs font-bold">
+                      <Navigation className="w-3 h-3 text-teal-600 rotate-45 shrink-0" />
+                      <span>
+                        {place.distanceKm < 1
+                          ? `${place.distanceMeters} m away`
+                          : `${place.distanceKm} km away`}
+                      </span>
+                    </div>
+                  )}
 
                   <p className="text-[11px] text-slate-600 line-clamp-2 mb-2 leading-tight">
                     {place.address}

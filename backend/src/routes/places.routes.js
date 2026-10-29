@@ -1,7 +1,13 @@
 import { Router } from 'express';
-import { getPlaces, getPlaceById } from '../controllers/places.controller.js';
+import { getPlaces, getPlaceById, getNearbyPlaces } from '../controllers/places.controller.js';
 
 const router = Router();
+
+/**
+ * GET /api/places/nearby
+ * Returns places within radius (km) of given coordinates, ordered by geographic distance.
+ */
+router.get('/nearby', getNearbyPlaces);
 
 /**
  * GET /api/places

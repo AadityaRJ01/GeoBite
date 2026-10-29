@@ -143,7 +143,20 @@ export default function PlaceCard({
 
       {/* Metrics Row: Rating, Price Level, Estimated Visit Minutes */}
       <div className="flex flex-wrap items-center justify-between gap-2 pt-3 mt-2 border-t border-forest-100/70 text-xs">
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          {/* PostGIS Calculated Distance */}
+          {typeof place.distanceMeters === 'number' && (
+            <div
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-teal-50 text-teal-800 border border-teal-200 font-bold text-xs"
+              title={`PostGIS geographic distance: ${place.distanceMeters} meters (${place.distanceKm} km)`}
+            >
+              <Navigation className="w-3 h-3 text-teal-600 rotate-45" />
+              <span>
+                {place.distanceKm < 1 ? `${place.distanceMeters} m` : `${place.distanceKm} km`}
+              </span>
+            </div>
+          )}
+
           {/* Rating */}
           {typeof place.averageRating === 'number' && place.averageRating > 0 && (
             <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-200 font-bold text-xs">

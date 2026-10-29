@@ -29,11 +29,13 @@ export default function DiscoveryControls({
   onClearFilters,
   totalCount,
   filteredCount,
+  isNearbyActive = false,
 }) {
+  const defaultSort = isNearbyActive ? 'distance-asc' : 'rating-desc';
   const isFiltered =
     Boolean(searchQuery.trim()) ||
     selectedCategory !== 'all' ||
-    sortBy !== 'rating-desc';
+    sortBy !== defaultSort;
 
   return (
     <div className="bg-white rounded-2xl p-4 sm:p-5 border border-forest-100 shadow-soft-sm space-y-4">
@@ -74,6 +76,12 @@ export default function DiscoveryControls({
               onChange={(e) => onSortChange(e.target.value)}
               className="pl-9 pr-8 py-2.5 rounded-xl border border-sand-300 text-xs sm:text-sm font-medium text-forest-900 bg-sand-50/50 hover:bg-white focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 transition-all appearance-none cursor-pointer"
             >
+              {isNearbyActive && (
+                <>
+                  <option value="distance-asc">Distance: Nearest First</option>
+                  <option value="distance-desc">Distance: Farthest First</option>
+                </>
+              )}
               <option value="rating-desc">Rating: Highest First</option>
               <option value="name-asc">Name: A → Z</option>
               <option value="name-desc">Name: Z → A</option>
