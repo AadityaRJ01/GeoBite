@@ -6,7 +6,8 @@ import {
   Map as MapIcon, 
   Sparkles, 
   ArrowLeft,
-  RefreshCw
+  RefreshCw,
+  Route
 } from 'lucide-react';
 import { fetchPlaces, fetchNearbyPlaces, fetchHealth } from '../services/placesApi';
 import DiscoveryControls from '../components/discovery/DiscoveryControls';
@@ -15,6 +16,7 @@ import PlaceList from '../components/discovery/PlaceList';
 import InteractiveMap from '../components/discovery/InteractiveMap';
 import { LoadingSkeleton, ErrorState } from '../components/discovery/StateViews';
 import Footer from '../components/Footer';
+
 
 export default function DiscoveryPage() {
   const [places, setPlaces] = useState([]);
@@ -276,7 +278,17 @@ export default function DiscoveryPage() {
 
             {/* Header Right: Live Health Pill & Quick Refresh */}
             <div className="flex items-center gap-3">
+              <Link
+                to="/route"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 transition-colors"
+                title="Open the multi-stop Route Planner"
+              >
+                <Route className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Plan Route</span>
+              </Link>
+
               <button
+
                 type="button"
                 onClick={handleRefresh}
                 disabled={loading}

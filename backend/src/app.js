@@ -2,11 +2,11 @@ import express from 'express';
 import cors from 'cors';
 import healthRoutes from './routes/health.routes.js';
 import placesRoutes from './routes/places.routes.js';
+import routesRoutes from './routes/routes.routes.js';
 
 
 const app = express();
 
-// Global Middleware
 // Global Middleware
 const allowedOrigins = [
   process.env.CLIENT_ORIGIN,
@@ -39,6 +39,7 @@ app.use(express.urlencoded({ extended: true }));
 // API Routes
 app.use('/api/health', healthRoutes);
 app.use('/api/places', placesRoutes);
+app.use('/api/routes', routesRoutes);
 
 
 // Root informational endpoint
