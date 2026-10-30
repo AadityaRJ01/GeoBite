@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   Compass, 
@@ -9,7 +9,7 @@ import {
   RefreshCw,
   Route
 } from 'lucide-react';
-import { fetchPlaces, fetchNearbyPlaces, fetchHealth } from '../services/placesApi';
+import { fetchNearbyPlaces, fetchHealth } from '../services/placesApi';
 import DiscoveryControls from '../components/discovery/DiscoveryControls';
 import NearbySearchControl from '../components/discovery/NearbySearchControl';
 import PlaceList from '../components/discovery/PlaceList';
@@ -17,21 +17,38 @@ import InteractiveMap from '../components/discovery/InteractiveMap';
 import { LoadingSkeleton, ErrorState } from '../components/discovery/StateViews';
 import Footer from '../components/Footer';
 
+// Default discovery center: Bengaluru coordinates
+const DEFAULT_LAT = 12.9716;
+const DEFAULT_LNG = 77.5946;
+const DEFAULT_RADIUS = 5;
+const PAGE_SIZE = 6;
 
 export default function DiscoveryPage() {
+  // Spatial Search Origin State
+  const [lat, setLat] = useState(DEFAULT_LAT);
+  const [lng, setLng] = useState(DEFAULT_LNG);
+  const [radius, setRadius] = useState(DEFAULT_RADIUS);
+
+  // Multi-criteria Filter State
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [minRating, setMinRating] = useState('');
+  const [maxPrice, setMaxPrice] = useState('');
+  const [sortBy, setSortBy] = useState('distance-asc');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Pagination State
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: PAGE_SIZE,
+    total: 0,
+    totalPages: 0,
+  });
+
+  // Data & Status State
   const [places, setPlaces] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-
-  // Discovery Controls State
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('all');
-  const [sortBy, setSortBy] = useState('rating-desc');
-
-  // PostGIS Nearby Search State
-  const [isNearbyActive, setIsNearbyActive] = useState(false);
-  const [nearbyParams, setNearbyParams] = useState(null);
-  const [nearbyLoading, setNearbyLoading] = useState(false);
 
   // Interactive Selection State
   const [selectedPlaceId, setSelectedPlaceId] = useState(null);
@@ -43,206 +60,193 @@ export default function DiscoveryPage() {
   // Backend Health Status
   const [backendStatus, setBackendStatus] = useState({ online: false, data: null });
 
-  // Handle nearby search trigger
-  const handleNearbySearch = useCallback(async ({ lat, lng, radius, category }) => {
-    setNearbyLoading(true);
+  // Race condition guard: ignore stale asynchronous responses
+  const activeRequestIdRef = useRef(0);
+
+  // Unified data fetcher querying PostGIS nearby API
+  const fetchPlacesData = useCallback(async () => {
+    const requestId = ++activeRequestIdRef.current;
+    setLoading(true);
     setError(null);
+
+    // Map UI sort identifier to backend parameters
+    let apiSortBy = 'distance';
+    let apiSortOrder = 'asc';
+    if (sortBy === 'rating-desc') {
+      apiSortBy = 'rating';
+      apiSortOrder = 'desc';
+    } else if (sortBy === 'rating-asc') {
+      apiSortBy = 'rating';
+      apiSortOrder = 'asc';
+    } else if (sortBy === 'distance-desc') {
+      apiSortBy = 'distance';
+      apiSortOrder = 'desc';
+    }
+
     try {
-      const data = await fetchNearbyPlaces({
+      const result = await fetchNearbyPlaces({
         lat,
         lng,
         radius,
-        category: category !== 'all' ? category : undefined,
+        category: selectedCategory !== 'all' ? selectedCategory : undefined,
+        minRating: minRating ? parseFloat(minRating) : undefined,
+        maxPrice: maxPrice || undefined,
+        page,
+        limit: PAGE_SIZE,
+        sortBy: apiSortBy,
+        sortOrder: apiSortOrder,
       });
-      setPlaces(data.places || []);
-      setIsNearbyActive(true);
-      setNearbyParams({ lat, lng, radius, category });
-      setSortBy('distance-asc');
-      if (data.places && data.places.length > 0) {
-        setSelectedPlaceId(data.places[0].id);
+
+      // Discard if a newer request was dispatched while waiting
+      if (requestId !== activeRequestIdRef.current) return;
+
+      const loadedPlaces = result.places || [];
+      setPlaces(loadedPlaces);
+
+      if (result.pagination) {
+        setPagination(result.pagination);
+      } else {
+        setPagination({
+          page,
+          limit: PAGE_SIZE,
+          total: loadedPlaces.length,
+          totalPages: Math.ceil(loadedPlaces.length / PAGE_SIZE) || 1,
+        });
+      }
+
+      // Default select the top place if none selected or previous selection is gone
+      if (loadedPlaces.length > 0) {
+        setSelectedPlaceId((prev) => {
+          const exists = loadedPlaces.some((p) => p.id === prev);
+          return exists ? prev : loadedPlaces[0].id;
+        });
       } else {
         setSelectedPlaceId(null);
       }
     } catch (err) {
-      console.error('Nearby search failed:', err);
+      if (requestId !== activeRequestIdRef.current) return;
+      console.error('Nearby search request failed:', err);
       setError(err.message || 'Failed to complete nearby search.');
+      setPlaces([]);
+      setPagination({
+        page: 1,
+        limit: PAGE_SIZE,
+        total: 0,
+        totalPages: 0,
+      });
     } finally {
-      setNearbyLoading(false);
-    }
-  }, []);
-
-  // Handle clear nearby search to return to all-places discovery
-  const handleClearNearby = useCallback(async () => {
-    setIsNearbyActive(false);
-    setNearbyParams(null);
-    setSortBy('rating-desc');
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await fetchPlaces();
-      setPlaces(data.places || []);
-      if (data.places && data.places.length > 0) {
-        setSelectedPlaceId(data.places[0].id);
+      if (requestId === activeRequestIdRef.current) {
+        setLoading(false);
       }
-    } catch (err) {
-      console.error('Failed to reload places:', err);
-      setError(err.message || 'Failed to reload places.');
-    } finally {
-      setLoading(false);
     }
-  }, []);
+  }, [lat, lng, radius, selectedCategory, minRating, maxPrice, sortBy, page]);
 
-  // Manual refresh handler
-  const handleRefresh = useCallback(async () => {
-    if (isNearbyActive && nearbyParams) {
-      handleNearbySearch(nearbyParams);
-      return;
-    }
+  // Execute query whenever filters, location, or page changes
+  useEffect(() => {
+    fetchPlacesData();
+  }, [fetchPlacesData]);
 
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await fetchPlaces();
-      setPlaces(data.places || []);
-      if (data.places && data.places.length > 0) {
-        setSelectedPlaceId(data.places[0].id);
-      }
-    } catch (err) {
-      console.error('Failed to load places from GeoBite backend:', err);
-      setError(err.message || 'Failed to fetch places from the server.');
-    } finally {
-      setLoading(false);
-    }
-  }, [isNearbyActive, nearbyParams, handleNearbySearch]);
-
-  // Check backend health and load places on mount
+  // Check backend health on initial mount
   useEffect(() => {
     let isMounted = true;
-
-    async function initialize() {
-      try {
-        const health = await fetchHealth();
+    fetchHealth()
+      .then((health) => {
         if (isMounted) setBackendStatus({ online: true, data: health });
-      } catch {
+      })
+      .catch(() => {
         if (isMounted) setBackendStatus({ online: false, data: null });
-      }
-
-      try {
-        const data = await fetchPlaces();
-        if (isMounted) {
-          setPlaces(data.places || []);
-          if (data.places && data.places.length > 0) {
-            setSelectedPlaceId(data.places[0].id);
-          }
-        }
-      } catch (err) {
-        if (isMounted) {
-          setError(err.message || 'Failed to fetch places from the server.');
-        }
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
-      }
-    }
-
-    initialize();
-
+      });
     return () => {
       isMounted = false;
     };
   }, []);
 
-  // Derive unique categories present in the data
-  const availableCategories = useMemo(() => {
-    const cats = new Set(places.map((p) => p.category).filter(Boolean));
-    return Array.from(cats);
+  // Spatial search submit handler from NearbySearchControl
+  const handleNearbySearch = useCallback(({ lat: newLat, lng: newLng, radius: newRadius, category: newCategory }) => {
+    setLat(newLat);
+    setLng(newLng);
+    setRadius(newRadius);
+    if (newCategory) {
+      setSelectedCategory(newCategory);
+    }
+    setPage(1);
+  }, []);
+
+  // Reset to default Bengaluru coordinates and radius
+  const handleClearNearby = useCallback(() => {
+    setLat(DEFAULT_LAT);
+    setLng(DEFAULT_LNG);
+    setRadius(DEFAULT_RADIUS);
+    setSelectedCategory('all');
+    setMinRating('');
+    setMaxPrice('');
+    setSortBy('distance-asc');
+    setSearchQuery('');
+    setPage(1);
+  }, []);
+
+  // Filter change handlers (all reset page to 1)
+  const handleCategoryChange = useCallback((newCategory) => {
+    setSelectedCategory(newCategory);
+    setPage(1);
+  }, []);
+
+  const handleMinRatingChange = useCallback((newRating) => {
+    setMinRating(newRating);
+    setPage(1);
+  }, []);
+
+  const handleMaxPriceChange = useCallback((newPrice) => {
+    setMaxPrice(newPrice);
+    setPage(1);
+  }, []);
+
+  const handleSortChange = useCallback((newSort) => {
+    setSortBy(newSort);
+    setPage(1);
+  }, []);
+
+  const handlePageChange = useCallback((newPage) => {
+    setPage(newPage);
+  }, []);
+
+  // Client-side text search filter (matches name, address, category, or description on current page)
+  const filteredPlaces = useMemo(() => {
+    if (!searchQuery.trim()) return places;
+    const query = searchQuery.trim().toLowerCase();
+    return places.filter(
+      (p) =>
+        (p.name && p.name.toLowerCase().includes(query)) ||
+        (p.address && p.address.toLowerCase().includes(query)) ||
+        (p.category && p.category.toLowerCase().includes(query)) ||
+        (p.description && p.description.toLowerCase().includes(query))
+    );
+  }, [places, searchQuery]);
+
+  // Selection handlers
+  const handleSelectPlace = useCallback((id) => {
+    setSelectedPlaceId(id);
+    const target = places.find((p) => p.id === id);
+    if (target) {
+      setFocusTarget(target);
+    }
   }, [places]);
 
-  // Client-side filtering & sorting without triggering redundant API calls
-  const filteredPlaces = useMemo(() => {
-    let result = [...places];
-
-    // Category filter
-    if (selectedCategory !== 'all') {
-      result = result.filter(
-        (p) => (p.category || '').toLowerCase() === selectedCategory.toLowerCase()
-      );
-    }
-
-    // Search query filter (matches name, address, category, or description)
-    if (searchQuery.trim()) {
-      const query = searchQuery.trim().toLowerCase();
-      result = result.filter(
-        (p) =>
-          (p.name && p.name.toLowerCase().includes(query)) ||
-          (p.address && p.address.toLowerCase().includes(query)) ||
-          (p.category && p.category.toLowerCase().includes(query)) ||
-          (p.description && p.description.toLowerCase().includes(query))
-      );
-    }
-
-    // Sorting
-    result.sort((a, b) => {
-      if (sortBy === 'distance-asc') {
-        return (a.distanceMeters ?? Infinity) - (b.distanceMeters ?? Infinity);
-      }
-      if (sortBy === 'distance-desc') {
-        return (b.distanceMeters ?? 0) - (a.distanceMeters ?? 0);
-      }
-      if (sortBy === 'rating-desc') {
-        return (b.averageRating || 0) - (a.averageRating || 0);
-      }
-      if (sortBy === 'name-asc') {
-        return (a.name || '').localeCompare(b.name || '');
-      }
-      if (sortBy === 'name-desc') {
-        return (b.name || '').localeCompare(a.name || '');
-      }
-      if (sortBy === 'duration-asc') {
-        return (a.estimatedVisitMinutes || 0) - (b.estimatedVisitMinutes || 0);
-      }
-      if (sortBy === 'duration-desc') {
-        return (b.estimatedVisitMinutes || 0) - (a.estimatedVisitMinutes || 0);
-      }
-      return 0;
-    });
-
-    return result;
-  }, [places, selectedCategory, searchQuery, sortBy]);
-
-  // Selection handler from card or marker
-  const handleSelectPlace = useCallback(
-    (id) => {
-      setSelectedPlaceId(id);
-      const target = places.find((p) => p.id === id);
-      if (target) {
-        setFocusTarget(target);
-      }
-    },
-    [places]
-  );
-
-  // Focus on map handler from card action
   const handleFocusMap = useCallback((place) => {
     setSelectedPlaceId(place.id);
     setFocusTarget(place);
-    // On mobile, switch to map tab so the user sees the map
     setMobileTab('map');
   }, []);
 
-  // Clear all filters
-  const handleClearFilters = useCallback(() => {
-    setSearchQuery('');
-    setSelectedCategory('all');
-    setSortBy(isNearbyActive ? 'distance-asc' : 'rating-desc');
-  }, [isNearbyActive]);
-
-  const defaultSort = isNearbyActive ? 'distance-asc' : 'rating-desc';
   const isFiltered =
     Boolean(searchQuery.trim()) ||
     selectedCategory !== 'all' ||
-    sortBy !== defaultSort;
+    Boolean(minRating) ||
+    Boolean(maxPrice) ||
+    sortBy !== 'distance-asc' ||
+    lat !== DEFAULT_LAT ||
+    lng !== DEFAULT_LNG ||
+    radius !== DEFAULT_RADIUS;
 
   return (
     <div className="min-h-screen flex flex-col bg-sand-50 selection:bg-teal-500 selection:text-white">
@@ -276,7 +280,7 @@ export default function DiscoveryPage() {
               </Link>
             </div>
 
-            {/* Header Right: Live Health Pill & Quick Refresh */}
+            {/* Header Right: Route Planner Shortcut, Refresh, Health Pill */}
             <div className="flex items-center gap-3">
               <Link
                 to="/route"
@@ -288,9 +292,8 @@ export default function DiscoveryPage() {
               </Link>
 
               <button
-
                 type="button"
-                onClick={handleRefresh}
+                onClick={fetchPlacesData}
                 disabled={loading}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-forest-800 bg-sand-100 hover:bg-sand-200 transition-colors disabled:opacity-50 cursor-pointer"
                 title="Refresh places from backend"
@@ -336,13 +339,13 @@ export default function DiscoveryPage() {
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-forest-50 border border-forest-200 text-forest-800 text-xs font-semibold mb-2">
               <Sparkles className="w-3.5 h-3.5 text-teal-600" />
-              <span>Bengaluru Local Intelligence</span>
+              <span>PostGIS Geospatial Discovery</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-forest-950 tracking-tight">
               Explore Verified Culinary & Scenic Spots
             </h1>
             <p className="text-sm text-slate-600 mt-1 max-w-2xl">
-              Real-time records powered by PostgreSQL and PostGIS spatial indexing. Select any place to highlight its location on the interactive map.
+              Live spatial distance calculations powered by PostgreSQL and PostGIS GiST indexing. Filter by radius, category, rating, budget, and sort deterministically.
             </p>
           </div>
 
@@ -379,49 +382,50 @@ export default function DiscoveryPage() {
         <NearbySearchControl
           onSearchNearby={handleNearbySearch}
           onClearNearby={handleClearNearby}
-          isNearbyActive={isNearbyActive}
-          activeParams={nearbyParams}
-          activeResultCount={filteredPlaces.length}
-          loading={nearbyLoading}
-          availableCategories={availableCategories}
+          isNearbyActive={true}
+          activeParams={{ lat, lng, radius, category: selectedCategory !== 'all' ? selectedCategory : undefined }}
+          activeResultCount={pagination.total || places.length}
+          loading={loading}
           selectedCategory={selectedCategory}
-          onCategoryChange={setSelectedCategory}
+          onCategoryChange={handleCategoryChange}
         />
 
-        {/* Discovery Controls (Search, Category Pills, Sort) */}
+        {/* Discovery Controls (Search, Rating, Budget, Category Pills, Sort) */}
         <div className="mb-6">
           <DiscoveryControls
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
             selectedCategory={selectedCategory}
-            onCategoryChange={setSelectedCategory}
-            availableCategories={availableCategories}
+            onCategoryChange={handleCategoryChange}
+            minRating={minRating}
+            onMinRatingChange={handleMinRatingChange}
+            maxPrice={maxPrice}
+            onMaxPriceChange={handleMaxPriceChange}
             sortBy={sortBy}
-            onSortChange={setSortBy}
-            onClearFilters={handleClearFilters}
-            totalCount={places.length}
+            onSortChange={handleSortChange}
+            onClearFilters={handleClearNearby}
+            totalCount={pagination.total || places.length}
             filteredCount={filteredPlaces.length}
-            isNearbyActive={isNearbyActive}
           />
         </div>
 
         {/* Error State */}
-        {error && !loading && !nearbyLoading && (
-          <ErrorState message={error} onRetry={handleRefresh} />
+        {error && !loading && (
+          <ErrorState message={error} onRetry={fetchPlacesData} />
         )}
 
         {/* Two-Column Responsive Split: List & Interactive Map */}
         {!error && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            {/* Left Column: Place List / Skeletons */}
+            {/* Left Column: Place List / Skeletons / Pagination */}
             <div
               className={`lg:col-span-5 lg:block ${
                 mobileTab === 'list' ? 'block' : 'hidden'
               }`}
             >
               <div className="lg:max-h-[calc(100vh-210px)] lg:overflow-y-auto lg:pr-2">
-                {loading || nearbyLoading ? (
-                  <LoadingSkeleton count={5} />
+                {loading ? (
+                  <LoadingSkeleton count={PAGE_SIZE} />
                 ) : (
                   <PlaceList
                     places={filteredPlaces}
@@ -429,7 +433,10 @@ export default function DiscoveryPage() {
                     onSelectPlace={handleSelectPlace}
                     onFocusMap={handleFocusMap}
                     isFiltered={isFiltered}
-                    onResetFilters={handleClearFilters}
+                    onResetFilters={handleClearNearby}
+                    pagination={pagination}
+                    onPageChange={handlePageChange}
+                    loading={loading}
                   />
                 )}
               </div>
@@ -446,9 +453,9 @@ export default function DiscoveryPage() {
                 selectedPlaceId={selectedPlaceId}
                 onSelectPlace={handleSelectPlace}
                 focusTarget={focusTarget}
-                searchCenter={nearbyParams ? { lat: nearbyParams.lat, lng: nearbyParams.lng } : null}
-                searchRadius={nearbyParams?.radius || 5}
-                isNearbyActive={isNearbyActive}
+                searchCenter={{ lat: Number(lat), lng: Number(lng) }}
+                searchRadius={Number(radius)}
+                isNearbyActive={true}
               />
             </div>
           </div>

@@ -8,7 +8,10 @@ import {
   Mountain, 
   Landmark, 
   Compass,
-  RotateCcw
+  RotateCcw,
+  Star,
+  DollarSign,
+  SlidersHorizontal
 } from 'lucide-react';
 
 const CATEGORY_ICONS = {
@@ -18,28 +21,53 @@ const CATEGORY_ICONS = {
   attraction: Landmark,
 };
 
+const CATEGORIES = [
+  { id: 'all', label: 'All Categories', icon: Compass },
+  { id: 'restaurant', label: 'Restaurants', icon: Utensils },
+  { id: 'cafe', label: 'Cafés', icon: Coffee },
+  { id: 'viewpoint', label: 'Viewpoints', icon: Mountain },
+  { id: 'attraction', label: 'Attractions', icon: Landmark },
+];
+
+const RATING_OPTIONS = [
+  { value: '', label: 'Any Rating' },
+  { value: '3', label: '3+ Stars' },
+  { value: '4', label: '4+ Stars' },
+  { value: '4.5', label: '4.5+ Stars' },
+];
+
+const PRICE_OPTIONS = [
+  { value: '', label: 'Any Budget' },
+  { value: 'budget', label: '$ Budget' },
+  { value: 'moderate', label: '$$ Moderate' },
+  { value: 'premium', label: '$$$ Premium' },
+];
+
 export default function DiscoveryControls({
   searchQuery,
   onSearchChange,
   selectedCategory,
   onCategoryChange,
-  availableCategories = [],
+  minRating,
+  onMinRatingChange,
+  maxPrice,
+  onMaxPriceChange,
   sortBy,
   onSortChange,
   onClearFilters,
   totalCount,
   filteredCount,
-  isNearbyActive = false,
 }) {
-  const defaultSort = isNearbyActive ? 'distance-asc' : 'rating-desc';
   const isFiltered =
     Boolean(searchQuery.trim()) ||
-    selectedCategory !== 'all' ||
-    sortBy !== defaultSort;
+    (selectedCategory && selectedCategory !== 'all') ||
+    Boolean(minRating) ||
+    Boolean(maxPrice) ||
+    sortBy !== 'distance-asc';
 
   return (
     <div className="bg-white rounded-2xl p-4 sm:p-5 border border-forest-100 shadow-soft-sm space-y-4">
-      {/* Top Row: Search Input + Sorting */}
+      {/* Top Row: Search Input + Sort Selection */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
         {/* Search Bar */}
         <div className="relative flex-1">
@@ -58,7 +86,7 @@ export default function DiscoveryControls({
             <button
               type="button"
               onClick={() => onSearchChange('')}
-              className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
+              className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
               aria-label="Clear search text"
             >
               <X className="w-4 h-4" />
@@ -76,17 +104,10 @@ export default function DiscoveryControls({
               onChange={(e) => onSortChange(e.target.value)}
               className="pl-9 pr-8 py-2.5 rounded-xl border border-sand-300 text-xs sm:text-sm font-medium text-forest-900 bg-sand-50/50 hover:bg-white focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 transition-all appearance-none cursor-pointer"
             >
-              {isNearbyActive && (
-                <>
-                  <option value="distance-asc">Distance: Nearest First</option>
-                  <option value="distance-desc">Distance: Farthest First</option>
-                </>
-              )}
-              <option value="rating-desc">Rating: Highest First</option>
-              <option value="name-asc">Name: A → Z</option>
-              <option value="name-desc">Name: Z → A</option>
-              <option value="duration-asc">Visit Time: Shortest</option>
-              <option value="duration-desc">Visit Time: Longest</option>
+              <option value="distance-asc">Nearest First</option>
+              <option value="rating-desc">Highest Rated</option>
+              <option value="distance-desc">Farthest First</option>
+              <option value="rating-asc">Lowest Rated</option>
             </select>
           </div>
 
@@ -105,49 +126,92 @@ export default function DiscoveryControls({
         </div>
       </div>
 
-      {/* Bottom Row: Category Filter Pills + Result Counter */}
+      {/* Middle Row: Rating & Budget Filters */}
       <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-forest-100/60">
-        {/* Category Filter Pills */}
-        <div className="flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label="Filter by category">
-          <button
-            type="button"
-            onClick={() => onCategoryChange('all')}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-              selectedCategory === 'all'
-                ? 'bg-forest-900 text-white shadow-soft-sm'
-                : 'bg-sand-100 text-forest-800 hover:bg-sand-200/80 border border-transparent'
-            }`}
-          >
-            <Compass className="w-3.5 h-3.5" />
-            <span>All Categories</span>
-          </button>
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Minimum Rating Selector */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-forest-900 inline-flex items-center gap-1">
+              <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
+              Rating:
+            </span>
+            <div className="inline-flex bg-sand-100 p-0.5 rounded-xl border border-sand-200">
+              {RATING_OPTIONS.map((opt) => {
+                const isSelected = minRating === opt.value;
+                return (
+                  <button
+                    key={opt.label}
+                    type="button"
+                    onClick={() => onMinRatingChange(opt.value)}
+                    className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                      isSelected
+                        ? 'bg-amber-500 text-white shadow-soft-sm'
+                        : 'text-forest-800 hover:text-forest-950 hover:bg-sand-200/60'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
-          {availableCategories.map((cat) => {
-            const Icon = CATEGORY_ICONS[cat] || Compass;
-            const isSelected = selectedCategory === cat;
-            return (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => onCategoryChange(cat)}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold capitalize transition-all cursor-pointer ${
-                  isSelected
-                    ? 'bg-teal-700 text-white shadow-soft-sm'
-                    : 'bg-sand-100 text-forest-800 hover:bg-sand-200/80 border border-transparent'
-                }`}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                <span>{cat}</span>
-              </button>
-            );
-          })}
+          {/* Budget / Price Tier Selector */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-forest-900 inline-flex items-center gap-1">
+              <DollarSign className="w-3.5 h-3.5 text-forest-700" />
+              Budget:
+            </span>
+            <div className="inline-flex bg-sand-100 p-0.5 rounded-xl border border-sand-200">
+              {PRICE_OPTIONS.map((opt) => {
+                const isSelected = maxPrice === opt.value;
+                return (
+                  <button
+                    key={opt.label}
+                    type="button"
+                    onClick={() => onMaxPriceChange(opt.value)}
+                    className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                      isSelected
+                        ? 'bg-forest-900 text-white shadow-soft-sm'
+                        : 'text-forest-800 hover:text-forest-950 hover:bg-sand-200/60'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
 
-        {/* Result Count Indicator */}
+        {/* Counter Info */}
         <div className="text-xs font-medium text-slate-500">
           Showing <span className="font-bold text-forest-900">{filteredCount}</span> of{' '}
           <span className="font-bold text-forest-900">{totalCount}</span> verified places
         </div>
+      </div>
+
+      {/* Bottom Row: Category Filter Pills */}
+      <div className="flex flex-wrap items-center gap-1.5 pt-3 border-t border-forest-100/60" role="radiogroup" aria-label="Filter by category">
+        {CATEGORIES.map((cat) => {
+          const Icon = cat.icon;
+          const isSelected = selectedCategory === cat.id;
+          return (
+            <button
+              key={cat.id}
+              type="button"
+              onClick={() => onCategoryChange(cat.id)}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold capitalize transition-all cursor-pointer ${
+                isSelected
+                  ? 'bg-teal-700 text-white shadow-soft-sm'
+                  : 'bg-sand-100 text-forest-800 hover:bg-sand-200/80 border border-transparent'
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              <span>{cat.label}</span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );

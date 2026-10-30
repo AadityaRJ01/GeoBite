@@ -10,7 +10,7 @@ import {
   Filter
 } from 'lucide-react';
 
-const RADIUS_OPTIONS = [1, 2, 5, 10, 20];
+const RADIUS_OPTIONS = [1, 5, 10, 25];
 
 // Clearly labeled demo coordinate presets for Bengaluru testing
 const DEMO_PRESETS = [
@@ -22,7 +22,7 @@ const DEMO_PRESETS = [
 export default function NearbySearchControl({
   onSearchNearby,
   onClearNearby,
-  isNearbyActive,
+  isNearbyActive = true,
   activeParams,
   activeResultCount = 0,
   loading = false,
@@ -30,9 +30,13 @@ export default function NearbySearchControl({
   selectedCategory = 'all',
   onCategoryChange,
 }) {
-  const [latInput, setLatInput] = useState('');
-  const [lngInput, setLngInput] = useState('');
-  const [radius, setRadius] = useState(5);
+  const [latInput, setLatInput] = useState(
+    activeParams?.lat ? String(activeParams.lat) : '12.9716'
+  );
+  const [lngInput, setLngInput] = useState(
+    activeParams?.lng ? String(activeParams.lng) : '77.5946'
+  );
+  const [radius, setRadius] = useState(activeParams?.radius || 5);
   const [geoLoading, setGeoLoading] = useState(false);
   const [geoNotice, setGeoNotice] = useState(null); // { type: 'error' | 'success' | 'info', message: string }
   const [validationError, setValidationError] = useState('');
@@ -140,8 +144,8 @@ export default function NearbySearchControl({
 
   // Handle reset/clear
   const handleClear = () => {
-    setLatInput('');
-    setLngInput('');
+    setLatInput('12.9716');
+    setLngInput('77.5946');
     setRadius(5);
     setValidationError('');
     setGeoNotice(null);

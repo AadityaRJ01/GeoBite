@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { 
   Star, 
   MapPin, 
@@ -8,7 +9,8 @@ import {
   Utensils, 
   Mountain, 
   Landmark, 
-  Navigation
+  Navigation,
+  Route
 } from 'lucide-react';
 
 /**
@@ -184,16 +186,28 @@ export default function PlaceCard({
           )}
         </div>
 
-        {/* Focus on Map Action */}
-        <button
-          type="button"
-          onClick={handleFocusClick}
-          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200/70 transition-colors"
-          title="Center this location on the map"
-        >
-          <Navigation className="w-3 h-3 text-teal-600" />
-          <span>Locate</span>
-        </button>
+        {/* Card Actions: Locate on Map & Plan Route */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={handleFocusClick}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200/70 transition-colors"
+            title="Center this location on the map"
+          >
+            <Navigation className="w-3 h-3 text-teal-600" />
+            <span>Locate</span>
+          </button>
+
+          <Link
+            to="/route"
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-forest-800 bg-sand-100 hover:bg-sand-200 border border-sand-200 transition-colors"
+            title="Open Route Planner with this spot"
+          >
+            <Route className="w-3 h-3 text-teal-600" />
+            <span>Plan Route</span>
+          </Link>
+        </div>
       </div>
 
       {/* Coordinate strip */}
