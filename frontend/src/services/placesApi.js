@@ -133,13 +133,29 @@ export async function fetchPlaces(params = {}) {
  * @param {Object} params - Query parameters
  * @param {number|string} params.lat - Latitude (-90 to 90)
  * @param {number|string} params.lng - Longitude (-180 to 180)
- * @param {number|string} [params.radius=5] - Radius in km (0.1 to 50)
+ * @param {number|string} [params.radius=5] - Radius in km (0.1 to 100)
  * @param {string} [params.category] - Optional category filter
- * @param {number|string} [params.limit=50] - Result limit
- * @returns {Promise<{ places: Array, count: number, success: boolean }>}
+ * @param {number|string} [params.minRating] - Optional minimum rating (0 to 5)
+ * @param {string} [params.maxPrice] - Optional maximum price tier ('budget' | 'moderate' | 'premium')
+ * @param {number|string} [params.page=1] - Pagination page number
+ * @param {number|string} [params.limit=10] - Result limit (1 to 50)
+ * @param {string} [params.sortBy='distance'] - Sort key ('distance' | 'rating')
+ * @param {string} [params.sortOrder] - Sort direction ('asc' | 'desc')
+ * @returns {Promise<{ places: Array, count: number, success: boolean, pagination: Object, search: Object }>}
  */
 export async function fetchNearbyPlaces(params = {}) {
-  const { lat, lng, radius, category, limit } = params;
+  const {
+    lat,
+    lng,
+    radius,
+    category,
+    minRating,
+    maxPrice,
+    page,
+    limit,
+    sortBy,
+    sortOrder,
+  } = params;
 
   if (lat === undefined || lat === null || isNaN(Number(lat))) {
     throw new ApiError('A valid latitude (lat) is required for nearby search.', 400);
@@ -158,8 +174,23 @@ export async function fetchNearbyPlaces(params = {}) {
   if (category && category !== 'all') {
     query.set('category', category);
   }
-  if (limit !== undefined && limit !== null) {
+  if (minRating !== undefined && minRating !== null && String(minRating).trim() !== '') {
+    query.set('minRating', String(minRating));
+  }
+  if (maxPrice !== undefined && maxPrice !== null && String(maxPrice).trim() !== '') {
+    query.set('maxPrice', String(maxPrice));
+  }
+  if (page !== undefined && page !== null && String(page).trim() !== '') {
+    query.set('page', String(page));
+  }
+  if (limit !== undefined && limit !== null && String(limit).trim() !== '') {
     query.set('limit', String(limit));
+  }
+  if (sortBy) {
+    query.set('sortBy', sortBy);
+  }
+  if (sortOrder) {
+    query.set('sortOrder', sortOrder);
   }
 
   const response = await fetchJson(`/places/nearby?${query.toString()}`);
@@ -201,6 +232,8 @@ export async function fetchNearbyPlaces(params = {}) {
     places: validatedPlaces,
     count: response.count ?? validatedPlaces.length,
     success: response.success ?? true,
+    pagination: response.pagination || null,
+    search: response.search || null,
   };
 }
 

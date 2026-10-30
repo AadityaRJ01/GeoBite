@@ -7,7 +7,9 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "test": "node test/route_optimizer.test.js",
+    "test": "node test/route_optimizer.test.js && node test/geospatial_discovery.test.js",
+    "test:discovery": "node test/geospatial_discovery.test.js",
+    "test:routes": "node test/route_optimizer.test.js",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
