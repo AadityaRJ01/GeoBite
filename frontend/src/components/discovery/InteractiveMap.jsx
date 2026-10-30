@@ -1,10 +1,22 @@
-import React, { useEffect, useMemo, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, Circle, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Compass, Star, Clock, Navigation } from 'lucide-react';
+import { 
+  Compass, 
+  Star, 
+  Clock, 
+  Navigation, 
+  Maximize2, 
+  RotateCcw, 
+  Search, 
+  RefreshCw,
+  Route,
+  MapPin
+} from 'lucide-react';
+import { Link } from 'react-router-dom';
 
-// Sensible demo fallback center (Bengaluru) when no places exist or valid coordinates are zero
+// Sensible demo fallback center (Bengaluru) when no coordinates are provided
 const DEFAULT_CENTER = [12.9716, 77.5946];
 const DEFAULT_ZOOM = 12;
 
@@ -12,20 +24,20 @@ const DEFAULT_ZOOM = 12;
  * Category color definitions for markers
  */
 const CATEGORY_COLORS = {
-  restaurant: { bg: '#d97706', border: '#b45309' }, // Amber
-  cafe: { bg: '#0d9488', border: '#0f766e' },       // Teal
-  viewpoint: { bg: '#0284c7', border: '#0369a1' },  // Sky
-  attraction: { bg: '#7c3aed', border: '#6d28d9' }, // Purple
+  restaurant: { bg: '#d97706', border: '#b45309', fill: '#f59e0b' }, // Amber
+  cafe:       { bg: '#0d9488', border: '#0f766e', fill: '#14b8a6' }, // Teal
+  viewpoint:  { bg: '#0284c7', border: '#0369a1', fill: '#38bdf8' }, // Sky
+  attraction: { bg: '#7c3aed', border: '#6d28d9', fill: '#a855f7' }, // Purple
 };
 
 /**
- * Generate a custom, crisp SVG DivIcon for Leaflet markers
+ * Generate a custom SVG DivIcon for Leaflet markers
  */
 function createCustomMarkerIcon(category, isSelected) {
-  const colors = CATEGORY_COLORS[category] || { bg: '#2f7059', border: '#1b3b30' };
-  const size = isSelected ? 42 : 32;
-  const pinColor = isSelected ? '#14b8a6' : colors.bg;
-  const borderColor = isSelected ? '#0d211b' : colors.border;
+  const colors = CATEGORY_COLORS[category] || { bg: '#2f7059', border: '#1b3b30', fill: '#14b8a6' };
+  const size = isSelected ? 44 : 32;
+  const pinColor = isSelected ? '#0d9488' : colors.bg;
+  const borderColor = isSelected ? '#ffffff' : colors.border;
 
   const html = `
     <div style="
@@ -37,26 +49,40 @@ function createCustomMarkerIcon(category, isSelected) {
       justify-content: center;
       cursor: pointer;
       transform: translate(-50%, -100%);
-      filter: drop-shadow(0 4px 6px rgba(13, 33, 27, 0.35));
+      filter: ${
+        isSelected
+          ? 'drop-shadow(0 0 10px rgba(13, 148, 136, 0.95)) drop-shadow(0 4px 8px rgba(13, 33, 27, 0.5))'
+          : 'drop-shadow(0 3px 5px rgba(13, 33, 27, 0.35))'
+      };
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     ">
       <svg viewBox="0 0 36 44" width="${size}" height="${(size * 44) / 36}" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M18 0C8.05888 0 0 8.05888 0 18C0 28.5 15.5 42.5 17.1 43.8C17.6 44.2 18.4 44.2 18.9 43.8C20.5 42.5 36 28.5 36 18C36 8.05888 27.9411 0 18 0Z" fill="${pinColor}" stroke="${borderColor}" stroke-width="2"/>
-        <circle cx="18" cy="17" r="7" fill="white" />
-        <circle cx="18" cy="17" r="3.5" fill="${pinColor}" />
+        <path d="M18 0C8.05888 0 0 8.05888 0 18C0 28.5 15.5 42.5 17.1 43.8C17.6 44.2 18.4 44.2 18.9 43.8C20.5 42.5 36 28.5 36 18C36 8.05888 27.9411 0 18 0Z" 
+          fill="${pinColor}" 
+          stroke="${borderColor}" 
+          stroke-width="${isSelected ? '2.5' : '1.5'}"
+        />
+        <circle cx="18" cy="17" r="${isSelected ? '8' : '6.5'}" fill="white" />
+        <circle cx="18" cy="17" r="${isSelected ? '4.5' : '3.5'}" fill="${pinColor}" />
       </svg>
-      ${isSelected ? `
+      ${
+        isSelected
+          ? `
         <span style="
           position: absolute;
           top: -4px;
           right: -4px;
-          width: 10px;
-          height: 10px;
+          width: 12px;
+          height: 12px;
           border-radius: 9999px;
           background-color: #2dd4bf;
           border: 2px solid #ffffff;
           box-shadow: 0 0 8px #2dd4bf;
+          animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
         "></span>
-      ` : ''}
+      `
+          : ''
+      }
     </div>
   `;
 
@@ -69,6 +95,9 @@ function createCustomMarkerIcon(category, isSelected) {
   });
 }
 
+/**
+ * Radar origin center pin
+ */
 function createSearchCenterMarkerIcon() {
   const html = `
     <div style="
@@ -115,21 +144,54 @@ function createSearchCenterMarkerIcon() {
 }
 
 /**
- * Controller sub-component to handle map viewport fitting and programmatic panning
+ * Controller sub-component handling map viewport moves, bounds change detection,
+ * and programmatic camera animations.
  */
-function MapViewController({ places, focusTarget, searchCenter, searchRadius, isNearbyActive }) {
+function MapEventHandler({
+  places,
+  focusTarget,
+  searchCenter,
+  searchRadius,
+  onBoundsChange,
+  isNearbyActive,
+}) {
   const map = useMap();
   const initialFitDone = useRef(false);
+  const lastProgrammaticCenter = useRef(null);
 
-  // When nearby search is active, fit to search center & places
+  // Listen to map user interactions (drag/pan/zoom)
+  useMapEvents({
+    moveend: () => {
+      if (!onBoundsChange) return;
+      const center = map.getCenter();
+      // Check if user moved away from programmatically set center
+      if (
+        lastProgrammaticCenter.current &&
+        Math.abs(center.lat - lastProgrammaticCenter.current.lat) < 0.0001 &&
+        Math.abs(center.lng - lastProgrammaticCenter.current.lng) < 0.0001
+      ) {
+        return;
+      }
+      const bounds = map.getBounds();
+      onBoundsChange({
+        minLat: bounds.getSouth(),
+        maxLat: bounds.getNorth(),
+        minLng: bounds.getWest(),
+        maxLng: bounds.getEast(),
+        center: { lat: center.lat, lng: center.lng },
+      });
+    },
+  });
+
+  // Fit to search center & radius circle when search center changes
   useEffect(() => {
     if (!isNearbyActive || !searchCenter || typeof searchCenter.lat !== 'number' || typeof searchCenter.lng !== 'number') {
       return;
     }
 
+    lastProgrammaticCenter.current = searchCenter;
     const centerLatLng = L.latLng(searchCenter.lat, searchCenter.lng);
     const radiusMeters = (searchRadius || 5) * 1000;
-    // Calculate geographic bounds of radius circle
     const circleBounds = centerLatLng.toBounds(radiusMeters);
 
     const validCoords = (places || [])
@@ -164,12 +226,24 @@ function MapViewController({ places, focusTarget, searchCenter, searchRadius, is
   // Smoothly fly to selected place when focused via card click or external trigger
   useEffect(() => {
     if (!focusTarget || !focusTarget.hasValidCoordinates) return;
+    lastProgrammaticCenter.current = { lat: focusTarget.latitude, lng: focusTarget.longitude };
     map.flyTo([focusTarget.latitude, focusTarget.longitude], 15, {
       duration: 1.2,
       easeLinearity: 0.25,
     });
   }, [focusTarget, map]);
 
+  return null;
+}
+
+/**
+ * Helper to expose map actions (Recenter, Fit All) outside the MapContainer
+ */
+function MapActionBridge({ onMountMap }) {
+  const map = useMap();
+  useEffect(() => {
+    onMountMap(map);
+  }, [map, onMountMap]);
   return null;
 }
 
@@ -181,8 +255,13 @@ export default function InteractiveMap({
   searchCenter = null,
   searchRadius = 5,
   isNearbyActive = false,
+  onSearchBounds = null,
+  loading = false,
 }) {
   const markerRefs = useRef({});
+  const [mapInstance, setMapInstance] = useState(null);
+  const [pendingBounds, setPendingBounds] = useState(null);
+  const [showSearchAreaBtn, setShowSearchAreaBtn] = useState(false);
 
   // Filter places to strictly valid coordinates
   const validPlaces = useMemo(() => {
@@ -198,11 +277,6 @@ export default function InteractiveMap({
         p.longitude <= 180
     );
   }, [places]);
-
-  // Selected place object
-  const selectedPlace = useMemo(() => {
-    return places.find((p) => p.id === selectedPlaceId) || null;
-  }, [places, selectedPlaceId]);
 
   // Determine initial center
   const initialCenter = useMemo(() => {
@@ -224,6 +298,34 @@ export default function InteractiveMap({
     }
   }, [selectedPlaceId]);
 
+  // Handle bounds change from map dragging/zooming
+  const handleBoundsChange = useCallback((boundsData) => {
+    setPendingBounds(boundsData);
+    setShowSearchAreaBtn(true);
+  }, []);
+
+  // Trigger search within current map bounds
+  const handleTriggerSearchArea = useCallback(() => {
+    if (!pendingBounds || !onSearchBounds) return;
+    onSearchBounds(pendingBounds);
+    setShowSearchAreaBtn(false);
+  }, [pendingBounds, onSearchBounds]);
+
+  // Re-center on search center
+  const handleRecenter = useCallback(() => {
+    if (!mapInstance || !searchCenter) return;
+    mapInstance.flyTo([searchCenter.lat, searchCenter.lng], 13, { duration: 1 });
+    setShowSearchAreaBtn(false);
+  }, [mapInstance, searchCenter]);
+
+  // Fit view to all visible markers
+  const handleFitAll = useCallback(() => {
+    if (!mapInstance || validPlaces.length === 0) return;
+    const bounds = L.latLngBounds(validPlaces.map((p) => [p.latitude, p.longitude]));
+    mapInstance.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
+    setShowSearchAreaBtn(false);
+  }, [mapInstance, validPlaces]);
+
   const hasValidSearchCenter =
     isNearbyActive &&
     searchCenter &&
@@ -234,14 +336,64 @@ export default function InteractiveMap({
 
   return (
     <div className="relative w-full h-[450px] lg:h-[calc(100vh-210px)] min-h-[420px] rounded-3xl overflow-hidden border border-forest-200/90 shadow-soft-md bg-sand-100 flex flex-col">
-      {/* Top Map Stats Badge */}
-      <div className="absolute top-4 left-4 z-[400] bg-white/90 backdrop-blur-md px-3.5 py-1.5 rounded-xl border border-forest-100 shadow-soft-sm flex items-center gap-2 text-xs font-semibold text-forest-900 pointer-events-auto">
-        <Compass className="w-3.5 h-3.5 text-teal-600 animate-spin-slow" />
+      {/* Top Left Stats Badge */}
+      <div className="absolute top-4 left-4 z-[400] bg-white/95 backdrop-blur-md px-3.5 py-1.5 rounded-xl border border-forest-100 shadow-soft-sm flex items-center gap-2 text-xs font-semibold text-forest-900 pointer-events-auto">
+        <Compass className={`w-3.5 h-3.5 text-teal-600 ${loading ? 'animate-spin' : ''}`} />
         <span>
           {validPlaces.length} {validPlaces.length === 1 ? 'Marker' : 'Markers'} Active
           {isNearbyActive && ` (${searchRadius} km radius)`}
         </span>
       </div>
+
+      {/* Floating "Search this area" Button */}
+      {showSearchAreaBtn && onSearchBounds && (
+        <div className="absolute top-4 inset-x-0 mx-auto w-fit z-[500] pointer-events-auto animate-bounce-subtle">
+          <button
+            type="button"
+            id="map-search-this-area-btn"
+            onClick={handleTriggerSearchArea}
+            disabled={loading}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-forest-900 hover:bg-teal-700 text-white text-xs font-bold shadow-soft-lg hover:shadow-soft-xl transition-all cursor-pointer border border-teal-400/40"
+          >
+            <Search className={`w-3.5 h-3.5 text-teal-300 ${loading ? 'animate-spin' : ''}`} />
+            <span>Search this area</span>
+          </button>
+        </div>
+      )}
+
+      {/* Floating Map Action Controls (Recenter & Fit All) */}
+      <div className="absolute bottom-5 right-4 z-[400] flex flex-col gap-2 pointer-events-auto">
+        {hasValidSearchCenter && (
+          <button
+            type="button"
+            id="map-recenter-btn"
+            onClick={handleRecenter}
+            className="w-9 h-9 rounded-xl bg-white/95 hover:bg-white text-forest-800 hover:text-teal-700 border border-forest-100 shadow-soft-md flex items-center justify-center transition-all cursor-pointer"
+            title="Recenter view on search origin"
+          >
+            <RotateCcw className="w-4 h-4" />
+          </button>
+        )}
+
+        {validPlaces.length > 0 && (
+          <button
+            type="button"
+            id="map-fit-all-btn"
+            onClick={handleFitAll}
+            className="w-9 h-9 rounded-xl bg-white/95 hover:bg-white text-forest-800 hover:text-teal-700 border border-forest-100 shadow-soft-md flex items-center justify-center transition-all cursor-pointer"
+            title="Fit view to all active place markers"
+          >
+            <Maximize2 className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+
+      {/* Loading Bar Overlay */}
+      {loading && (
+        <div className="absolute top-0 inset-x-0 z-[600] h-1 bg-teal-100 overflow-hidden">
+          <div className="w-full h-full bg-teal-600 animate-pulse"></div>
+        </div>
+      )}
 
       {/* Map Container */}
       <MapContainer
@@ -256,12 +408,14 @@ export default function InteractiveMap({
           maxZoom={19}
         />
 
-        <MapViewController
+        <MapActionBridge onMountMap={setMapInstance} />
+
+        <MapEventHandler
           places={validPlaces}
-          selectedPlace={selectedPlace}
           focusTarget={focusTarget}
           searchCenter={searchCenter}
           searchRadius={searchRadius}
+          onBoundsChange={handleBoundsChange}
           isNearbyActive={isNearbyActive}
         />
 
@@ -282,7 +436,7 @@ export default function InteractiveMap({
             <Marker
               position={[searchCenter.lat, searchCenter.lng]}
               icon={createSearchCenterMarkerIcon()}
-              zIndexOffset={1000}
+              zIndexOffset={500}
             >
               <Popup>
                 <div className="p-1 max-w-[200px] text-center">
@@ -302,6 +456,7 @@ export default function InteractiveMap({
           </>
         )}
 
+        {/* Place Markers with Visual Distinction for Selected Place */}
         {validPlaces.map((place) => {
           const isSelected = place.id === selectedPlaceId;
           const markerIcon = createCustomMarkerIcon(place.category, isSelected);
@@ -311,6 +466,7 @@ export default function InteractiveMap({
               key={place.id}
               position={[place.latitude, place.longitude]}
               icon={markerIcon}
+              zIndexOffset={isSelected ? 1000 : 100}
               ref={(ref) => {
                 if (ref) {
                   markerRefs.current[place.id] = ref;
@@ -325,7 +481,7 @@ export default function InteractiveMap({
               }}
             >
               <Popup>
-                <div className="p-1 max-w-[240px]">
+                <div className="p-1 max-w-[250px]">
                   <div className="flex items-center justify-between gap-2 mb-1.5">
                     <span className="font-bold text-sm text-forest-950 truncate">
                       {place.name}
@@ -369,6 +525,20 @@ export default function InteractiveMap({
                       </span>
                     )}
                   </div>
+
+                  {/* Action row in popup */}
+                  <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      {place.latitude.toFixed(3)}°, {place.longitude.toFixed(3)}°
+                    </span>
+                    <Link
+                      to="/route"
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 transition-colors"
+                    >
+                      <Route className="w-3 h-3 text-teal-600" />
+                      <span>Plan Route</span>
+                    </Link>
+                  </div>
                 </div>
               </Popup>
             </Marker>
@@ -377,14 +547,24 @@ export default function InteractiveMap({
       </MapContainer>
 
       {/* Fallback notice if 0 coordinates */}
-      {validPlaces.length === 0 && (
-        <div className="absolute inset-0 z-[500] bg-white/80 backdrop-blur-sm flex items-center justify-center p-6 text-center">
+      {validPlaces.length === 0 && !loading && (
+        <div className="absolute inset-0 z-[500] bg-white/85 backdrop-blur-sm flex items-center justify-center p-6 text-center">
           <div className="max-w-xs">
             <Compass className="w-8 h-8 text-teal-600 mx-auto mb-2 animate-bounce" />
-            <h4 className="font-bold text-forest-950 text-sm">No Coordinates to Display</h4>
-            <p className="text-xs text-slate-600 mt-1">
-              Currently fetched place records do not contain valid geographic coordinates.
+            <h4 className="font-bold text-forest-950 text-sm">No Spots in this Viewport</h4>
+            <p className="text-xs text-slate-600 mt-1 mb-3">
+              Pan the map back to Bengaluru or click reset to expand your search.
             </p>
+            {hasValidSearchCenter && (
+              <button
+                type="button"
+                onClick={handleRecenter}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-forest-900 text-white text-xs font-semibold hover:bg-teal-700 transition-colors cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Return to Search Center</span>
+              </button>
+            )}
           </div>
         </div>
       )}

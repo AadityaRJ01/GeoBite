@@ -426,3 +426,214 @@ export const getNearbyPlaces = async (req, res, next) => {
   }
 };
 
+/**
+ * GET /api/places/bounds
+ * Returns active places within a rectangular bounding box (visible map viewport).
+ * 
+ * Query parameters:
+ *  - minLat: south latitude (-90 to 90) [required]
+ *  - minLng: west longitude (-180 to 180) [required]
+ *  - maxLat: north latitude (-90 to 90) [required]
+ *  - maxLng: east longitude (-180 to 180) [required]
+ *  - category: optional category filter ('restaurant' | 'cafe' | 'viewpoint' | 'attraction')
+ *  - minRating: optional minimum rating (0 to 5)
+ *  - maxPrice: optional maximum price level ('budget' | 'moderate' | 'premium')
+ *  - limit: optional result limit (1 to 100, default 50)
+ */
+export const getPlacesWithinBounds = async (req, res, next) => {
+  try {
+    const { minLat, minLng, maxLat, maxLng, category, minRating, maxPrice, limit } = req.query;
+
+    // Validate coordinates presence
+    if (minLat === undefined || minLng === undefined || maxLat === undefined || maxLng === undefined) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: "Query parameters 'minLat', 'minLng', 'maxLat', and 'maxLng' are required.",
+          statusCode: 400,
+        },
+      });
+    }
+
+    const pMinLat = parseFloat(minLat);
+    const pMaxLat = parseFloat(maxLat);
+    const pMinLng = parseFloat(minLng);
+    const pMaxLng = parseFloat(maxLng);
+
+    if (isNaN(pMinLat) || isNaN(pMaxLat) || isNaN(pMinLng) || isNaN(pMaxLng)) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'All bounding box coordinates must be valid numbers.',
+          statusCode: 400,
+        },
+      });
+    }
+
+    if (pMinLat < -90 || pMinLat > 90 || pMaxLat < -90 || pMaxLat > 90) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'Latitude must be between -90 and 90 degrees.',
+          statusCode: 400,
+        },
+      });
+    }
+
+    if (pMinLng < -180 || pMinLng > 180 || pMaxLng < -180 || pMaxLng > 180) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'Longitude must be between -180 and 180 degrees.',
+          statusCode: 400,
+        },
+      });
+    }
+
+    if (pMinLat > pMaxLat) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: "'minLat' cannot be greater than 'maxLat'.",
+          statusCode: 400,
+        },
+      });
+    }
+
+    if (pMinLng > pMaxLng) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: "'minLng' cannot be greater than 'maxLng'.",
+          statusCode: 400,
+        },
+      });
+    }
+
+    // Optional category validation
+    const validCategories = ['restaurant', 'cafe', 'viewpoint', 'attraction'];
+    if (category && !validCategories.includes(category)) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: `Invalid category "${category}". Valid values: ${validCategories.join(', ')}`,
+          statusCode: 400,
+        },
+      });
+    }
+
+    // Optional minRating validation
+    let parsedMinRating = null;
+    if (minRating !== undefined && minRating !== null && String(minRating).trim() !== '') {
+      parsedMinRating = parseFloat(minRating);
+      if (isNaN(parsedMinRating) || parsedMinRating < 0 || parsedMinRating > 5) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            message: "Query parameter 'minRating' must be a number between 0 and 5.",
+            statusCode: 400,
+          },
+        });
+      }
+    }
+
+    // Optional maxPrice validation
+    let allowedPriceLevels = null;
+    if (maxPrice !== undefined && maxPrice !== null && String(maxPrice).trim() !== '') {
+      const normalizedPrice = String(maxPrice).trim().toLowerCase();
+      const priceMap = {
+        budget: ['budget'],
+        '1': ['budget'],
+        $: ['budget'],
+        moderate: ['budget', 'moderate'],
+        '2': ['budget', 'moderate'],
+        $$: ['budget', 'moderate'],
+        premium: ['budget', 'moderate', 'premium'],
+        '3': ['budget', 'moderate', 'premium'],
+        $$$: ['budget', 'moderate', 'premium'],
+      };
+
+      if (!priceMap[normalizedPrice]) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            message: `Invalid maxPrice "${maxPrice}". Valid values: budget, moderate, premium`,
+            statusCode: 400,
+          },
+        });
+      }
+      allowedPriceLevels = priceMap[normalizedPrice];
+    }
+
+    // Optional limit validation (default 50, max 100)
+    let parsedLimit = 50;
+    if (limit !== undefined && limit !== null && String(limit).trim() !== '') {
+      parsedLimit = Number(limit);
+      if (!Number.isInteger(parsedLimit) || parsedLimit < 1 || parsedLimit > 100) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            message: "Query parameter 'limit' must be an integer between 1 and 100.",
+            statusCode: 400,
+          },
+        });
+      }
+    }
+
+    const categoryCondition = category
+      ? Prisma.sql`AND category = ${category}::"PlaceCategory"`
+      : Prisma.empty;
+
+    const ratingCondition = parsedMinRating !== null
+      ? Prisma.sql`AND "averageRating" >= ${parsedMinRating}`
+      : Prisma.empty;
+
+    const priceCondition = allowedPriceLevels !== null
+      ? Prisma.sql`AND "priceLevel" IN (${Prisma.join(allowedPriceLevels)})`
+      : Prisma.empty;
+
+    // Parameterized spatial query using PostGIS ST_MakeEnvelope and ST_Within
+    const rawPlaces = await prisma.$queryRaw`
+      SELECT 
+        id, 
+        name, 
+        description,
+        category,
+        latitude, 
+        longitude, 
+        address,
+        "averageRating",
+        "priceLevel",
+        "estimatedVisitMinutes",
+        "isActive",
+        "createdAt",
+        "updatedAt"
+      FROM places
+      WHERE "isActive" = true
+        AND ST_Within(
+          location::geometry,
+          ST_MakeEnvelope(${pMinLng}, ${pMinLat}, ${pMaxLng}, ${pMaxLat}, 4326)
+        )
+        ${categoryCondition}
+        ${ratingCondition}
+        ${priceCondition}
+      ORDER BY "averageRating" DESC, name ASC
+      LIMIT ${parsedLimit};
+    `;
+
+    return res.status(200).json({
+      success: true,
+      count: rawPlaces.length,
+      bounds: {
+        minLat: pMinLat,
+        minLng: pMinLng,
+        maxLat: pMaxLat,
+        maxLng: pMaxLng,
+      },
+      data: rawPlaces,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

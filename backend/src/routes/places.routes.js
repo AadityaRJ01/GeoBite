@@ -1,5 +1,10 @@
 import { Router } from 'express';
-import { getPlaces, getPlaceById, getNearbyPlaces } from '../controllers/places.controller.js';
+import {
+  getPlaces,
+  getPlaceById,
+  getNearbyPlaces,
+  getPlacesWithinBounds,
+} from '../controllers/places.controller.js';
 
 const router = Router();
 
@@ -8,6 +13,12 @@ const router = Router();
  * Returns places within radius (km) of given coordinates, ordered by geographic distance.
  */
 router.get('/nearby', getNearbyPlaces);
+
+/**
+ * GET /api/places/bounds
+ * Returns places within a geographical bounding box (minLat, minLng, maxLat, maxLng).
+ */
+router.get('/bounds', getPlacesWithinBounds);
 
 /**
  * GET /api/places
