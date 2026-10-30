@@ -9,7 +9,7 @@ import {
   RefreshCw,
   Route
 } from 'lucide-react';
-import { fetchNearbyPlaces, fetchHealth } from '../services/placesApi';
+import { fetchNearbyPlaces, fetchPlacesInBounds, fetchHealth } from '../services/placesApi';
 import DiscoveryControls from '../components/discovery/DiscoveryControls';
 import NearbySearchControl from '../components/discovery/NearbySearchControl';
 import PlaceList from '../components/discovery/PlaceList';
@@ -209,6 +209,60 @@ export default function DiscoveryPage() {
   const handlePageChange = useCallback((newPage) => {
     setPage(newPage);
   }, []);
+
+  // Search within visible map bounding box
+  const handleSearchBounds = useCallback(
+    async ({ minLat, minLng, maxLat, maxLng, center }) => {
+      const requestId = ++activeRequestIdRef.current;
+      setLoading(true);
+      setError(null);
+
+      try {
+        const result = await fetchPlacesInBounds({
+          minLat,
+          minLng,
+          maxLat,
+          maxLng,
+          category: selectedCategory !== 'all' ? selectedCategory : undefined,
+          minRating: minRating ? parseFloat(minRating) : undefined,
+          maxPrice: maxPrice || undefined,
+          limit: 50,
+        });
+
+        if (requestId !== activeRequestIdRef.current) return;
+
+        const loadedPlaces = result.places || [];
+        setPlaces(loadedPlaces);
+        setPagination({
+          page: 1,
+          limit: 50,
+          total: loadedPlaces.length,
+          totalPages: 1,
+        });
+
+        // Synchronize search center with the visible map center
+        if (center && typeof center.lat === 'number' && typeof center.lng === 'number') {
+          setLat(Number(center.lat.toFixed(4)));
+          setLng(Number(center.lng.toFixed(4)));
+        }
+
+        if (loadedPlaces.length > 0) {
+          setSelectedPlaceId(loadedPlaces[0].id);
+        } else {
+          setSelectedPlaceId(null);
+        }
+      } catch (err) {
+        if (requestId !== activeRequestIdRef.current) return;
+        console.error('Bounds search failed:', err);
+        setError(err.message || 'Failed to search within map bounds.');
+      } finally {
+        if (requestId === activeRequestIdRef.current) {
+          setLoading(false);
+        }
+      }
+    },
+    [selectedCategory, minRating, maxPrice]
+  );
 
   // Client-side text search filter (matches name, address, category, or description on current page)
   const filteredPlaces = useMemo(() => {
@@ -456,6 +510,8 @@ export default function DiscoveryPage() {
                 searchCenter={{ lat: Number(lat), lng: Number(lng) }}
                 searchRadius={Number(radius)}
                 isNearbyActive={true}
+                onSearchBounds={handleSearchBounds}
+                loading={loading}
               />
             </div>
           </div>

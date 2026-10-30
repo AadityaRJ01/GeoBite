@@ -238,6 +238,75 @@ export async function fetchNearbyPlaces(params = {}) {
 }
 
 /**
+ * Fetch places within a rectangular bounding box (visible map viewport).
+ * @param {Object} bounds - Bounding box coordinates
+ * @param {number|string} bounds.minLat - South latitude (-90 to 90)
+ * @param {number|string} bounds.minLng - West longitude (-180 to 180)
+ * @param {number|string} bounds.maxLat - North latitude (-90 to 90)
+ * @param {number|string} bounds.maxLng - East longitude (-180 to 180)
+ * @param {string} [bounds.category] - Optional category filter
+ * @param {number|string} [bounds.minRating] - Optional minimum rating
+ * @param {string} [bounds.maxPrice] - Optional max price tier
+ * @param {number|string} [bounds.limit=50] - Result limit
+ * @returns {Promise<{ places: Array, count: number, success: boolean, bounds: Object }>}
+ */
+export async function fetchPlacesInBounds(bounds = {}) {
+  const { minLat, minLng, maxLat, maxLng, category, minRating, maxPrice, limit } = bounds;
+
+  if (minLat === undefined || minLng === undefined || maxLat === undefined || maxLng === undefined) {
+    throw new ApiError('minLat, minLng, maxLat, and maxLng are required for bounds search.', 400);
+  }
+
+  const query = new URLSearchParams();
+  query.set('minLat', String(minLat));
+  query.set('minLng', String(minLng));
+  query.set('maxLat', String(maxLat));
+  query.set('maxLng', String(maxLng));
+
+  if (category && category !== 'all') {
+    query.set('category', category);
+  }
+  if (minRating !== undefined && minRating !== null && String(minRating).trim() !== '') {
+    query.set('minRating', String(minRating));
+  }
+  if (maxPrice !== undefined && maxPrice !== null && String(maxPrice).trim() !== '') {
+    query.set('maxPrice', String(maxPrice));
+  }
+  if (limit !== undefined && limit !== null && String(limit).trim() !== '') {
+    query.set('limit', String(limit));
+  }
+
+  const response = await fetchJson(`/places/bounds?${query.toString()}`);
+  const rawPlaces = Array.isArray(response.data) ? response.data : [];
+
+  const validatedPlaces = rawPlaces.map((place) => {
+    const latNum = typeof place.latitude === 'number' ? place.latitude : parseFloat(place.latitude);
+    const lngNum = typeof place.longitude === 'number' ? place.longitude : parseFloat(place.longitude);
+    const hasValidCoordinates =
+      !isNaN(latNum) &&
+      !isNaN(lngNum) &&
+      latNum >= -90 &&
+      latNum <= 90 &&
+      lngNum >= -180 &&
+      lngNum <= 180;
+
+    return {
+      ...place,
+      latitude: latNum,
+      longitude: lngNum,
+      hasValidCoordinates,
+    };
+  });
+
+  return {
+    places: validatedPlaces,
+    count: response.count ?? validatedPlaces.length,
+    success: response.success ?? true,
+    bounds: response.bounds,
+  };
+}
+
+/**
  * Fetch a single place by UUID
  * @param {string} id - Place UUID
  * @returns {Promise<Object>}

@@ -300,6 +300,22 @@ async function runGeospatialDiscoveryTests() {
     const placesStillExist = await getJson('/api/places');
     assert('Database integrity intact: places count is 18', placesStillExist.data.count === 18);
 
+    // ── 12. Testing Bounding Box Viewport Search (GET /api/places/bounds) ──
+    console.log('\n--- 12. Testing Bounding Box Viewport Search (GET /api/places/bounds) ---');
+
+    const missingBounds = await getJson('/api/places/bounds');
+    assert('Missing bounds params returns 400', missingBounds.status === 400);
+
+    const invalidRange = await getJson('/api/places/bounds?minLat=13&maxLat=12&minLng=77&maxLng=78');
+    assert('minLat > maxLat returns 400', invalidRange.status === 400);
+
+    const validBounds = await getJson('/api/places/bounds?minLat=12.90&minLng=77.50&maxLat=13.05&maxLng=77.70');
+    assert('Valid bounding box returns 200 OK', validBounds.status === 200);
+    assert('Bounding box returns places within the box', validBounds.data.count > 0 && Array.isArray(validBounds.data.data));
+
+    const cafeBounds = await getJson('/api/places/bounds?minLat=12.90&minLng=77.50&maxLat=13.05&maxLng=77.70&category=cafe');
+    assert('Bounding box respects category filter', cafeBounds.status === 200 && cafeBounds.data.data.every((p) => p.category === 'cafe'));
+
   } finally {
     await stopServer();
   }
