@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   Compass, 
@@ -95,6 +95,7 @@ export default function DiscoveryPage() {
         limit: PAGE_SIZE,
         sortBy: apiSortBy,
         sortOrder: apiSortOrder,
+        query: searchQuery && searchQuery.trim() ? searchQuery.trim() : undefined,
       });
 
       // Discard if a newer request was dispatched while waiting
@@ -139,7 +140,7 @@ export default function DiscoveryPage() {
         setLoading(false);
       }
     }
-  }, [lat, lng, radius, selectedCategory, minRating, maxPrice, sortBy, page]);
+  }, [lat, lng, radius, selectedCategory, minRating, maxPrice, sortBy, page, searchQuery]);
 
   // Execute query whenever filters, location, or page changes
   useEffect(() => {
@@ -210,6 +211,12 @@ export default function DiscoveryPage() {
     setPage(newPage);
   }, []);
 
+  // Search query handler — resets to page 1 on every new keyword
+  const handleSearchQueryChange = useCallback((newQuery) => {
+    setSearchQuery(newQuery);
+    setPage(1);
+  }, []);
+
   // Search within visible map bounding box
   const handleSearchBounds = useCallback(
     async ({ minLat, minLng, maxLat, maxLng, center }) => {
@@ -227,6 +234,7 @@ export default function DiscoveryPage() {
           minRating: minRating ? parseFloat(minRating) : undefined,
           maxPrice: maxPrice || undefined,
           limit: 50,
+          query: searchQuery && searchQuery.trim() ? searchQuery.trim() : undefined,
         });
 
         if (requestId !== activeRequestIdRef.current) return;
@@ -261,21 +269,12 @@ export default function DiscoveryPage() {
         }
       }
     },
-    [selectedCategory, minRating, maxPrice]
+    [selectedCategory, minRating, maxPrice, searchQuery]
   );
 
-  // Client-side text search filter (matches name, address, category, or description on current page)
-  const filteredPlaces = useMemo(() => {
-    if (!searchQuery.trim()) return places;
-    const query = searchQuery.trim().toLowerCase();
-    return places.filter(
-      (p) =>
-        (p.name && p.name.toLowerCase().includes(query)) ||
-        (p.address && p.address.toLowerCase().includes(query)) ||
-        (p.category && p.category.toLowerCase().includes(query)) ||
-        (p.description && p.description.toLowerCase().includes(query))
-    );
-  }, [places, searchQuery]);
+  // Backend handles keyword filtering; no client-side text filter needed.
+  // filteredPlaces is an alias for places to preserve the existing prop interface.
+  const filteredPlaces = places;
 
   // Selection handlers
   const handleSelectPlace = useCallback((id) => {
@@ -448,7 +447,7 @@ export default function DiscoveryPage() {
         <div className="mb-6">
           <DiscoveryControls
             searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
+            onSearchChange={handleSearchQueryChange}
             selectedCategory={selectedCategory}
             onCategoryChange={handleCategoryChange}
             minRating={minRating}

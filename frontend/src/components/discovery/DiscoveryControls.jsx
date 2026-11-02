@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Search, 
   X, 
@@ -58,6 +58,29 @@ export default function DiscoveryControls({
   totalCount,
   filteredCount,
 }) {
+  const [localSearch, setLocalSearch] = useState(searchQuery || '');
+
+  // Keep local search input synchronized if searchQuery prop changes externally (e.g., reset)
+  useEffect(() => {
+    setLocalSearch(searchQuery || '');
+  }, [searchQuery]);
+
+  // Debounce user input by 350ms before dispatching search to parent
+  useEffect(() => {
+    if (localSearch === (searchQuery || '')) return;
+
+    const timer = setTimeout(() => {
+      onSearchChange(localSearch);
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [localSearch, searchQuery, onSearchChange]);
+
+  const handleClear = () => {
+    setLocalSearch('');
+    onSearchChange('');
+  };
+
   const isFiltered =
     Boolean(searchQuery.trim()) ||
     (selectedCategory && selectedCategory !== 'all') ||
@@ -77,15 +100,15 @@ export default function DiscoveryControls({
           <input
             type="text"
             id="places-search-input"
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
+            value={localSearch}
+            onChange={(e) => setLocalSearch(e.target.value)}
             placeholder="Search by spot name, address, or cuisine..."
             className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-sand-300 text-sm placeholder-slate-400 text-forest-950 focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 transition-all bg-sand-50/50"
           />
-          {searchQuery && (
+          {localSearch && (
             <button
               type="button"
-              onClick={() => onSearchChange('')}
+              onClick={handleClear}
               className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
               aria-label="Clear search text"
             >

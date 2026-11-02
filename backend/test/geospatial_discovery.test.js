@@ -316,12 +316,119 @@ async function runGeospatialDiscoveryTests() {
     const cafeBounds = await getJson('/api/places/bounds?minLat=12.90&minLng=77.50&maxLat=13.05&maxLng=77.70&category=cafe');
     assert('Bounding box respects category filter', cafeBounds.status === 200 && cafeBounds.data.data.every((p) => p.category === 'cafe'));
 
+    // ── 13. Testing Keyword & Full-Text Search Integration (Day 10) ──
+    console.log('\n--- 13. Testing Keyword & Full-Text Search Integration ---');
+
+    // Exact name match
+    const exactName = await getJson('/api/places/nearby?lat=12.9716&lng=77.5946&radius=100&query=Karavalli');
+    assert('Exact name search "Karavalli" returns 200 with matching place',
+      exactName.status === 200 &&
+      exactName.data.data.some((p) => p.name === 'Karavalli') &&
+      exactName.data.search.query === 'Karavalli'
+    );
+
+    // Partial name match
+    const partialName = await getJson('/api/places/nearby?lat=12.9716&lng=77.5946&radius=100&query=Blue%20Tokai');
+    assert('Partial name search "Blue Tokai" returns matching place',
+      partialName.status === 200 &&
+      partialName.data.data.some((p) => p.name.includes('Blue Tokai'))
+    );
+
+    // Description keyword match
+    const descSearch = await getJson('/api/places/nearby?lat=12.9716&lng=77.5946&radius=100&query=botanical');
+    assert('Description keyword "botanical" returns matching place',
+      descSearch.status === 200 &&
+      descSearch.data.data.length > 0 &&
+      descSearch.data.data.some((p) => p.name.toLowerCase().includes('lalbagh') || p.description.toLowerCase().includes('botanical'))
+    );
+
+    // Category keyword match via search
+    const catQuery = await getJson('/api/places/nearby?lat=12.9716&lng=77.5946&radius=100&query=cafe');
+    assert('Category keyword search "cafe" returns cafe places',
+      catQuery.status === 200 &&
+      catQuery.data.data.length > 0 &&
+      catQuery.data.data.some((p) => p.category === 'cafe')
+    );
+
+    // Case-insensitivity match
+    const upperCase = await getJson('/api/places/nearby?lat=12.9716&lng=77.5946&radius=100&query=TRUFFLES');
+    assert('Uppercase query "TRUFFLES" matches Truffles',
+      upperCase.status === 200 &&
+      upperCase.data.data.some((p) => p.name.toLowerCase().includes('truffles'))
+    );
+
+    // Combined keyword + minRating filter
+    const combinedRating = await getJson('/api/places/nearby?lat=12.9716&lng=77.5946&radius=100&query=coffee&minRating=4.4');
+    assert('Combined query "coffee" + minRating=4.4 returns only places with rating >= 4.4',
+      combinedRating.status === 200 &&
+      combinedRating.data.data.every((p) => p.averageRating >= 4.4)
+    );
+
+    // Combined keyword + category filter
+    const combinedCat = await getJson('/api/places/nearby?lat=12.9716&lng=77.5946&radius=100&query=Lalbagh&category=attraction');
+    assert('Combined query "Lalbagh" + category=attraction returns only attractions',
+      combinedCat.status === 200 &&
+      combinedCat.data.data.length > 0 &&
+      combinedCat.data.data.every((p) => p.category === 'attraction')
+    );
+
+    // Non-existent search query returns 0 items safely
+    const noMatch = await getJson('/api/places/nearby?lat=12.9716&lng=77.5946&radius=100&query=xyznonexistent123');
+    assert('Non-matching query returns 200 with 0 count and empty array',
+      noMatch.status === 200 &&
+      noMatch.data.count === 0 &&
+      noMatch.data.data.length === 0
+    );
+
+    // SQL Injection query safety
+    const injectionQuery = await getJson(
+      `/api/places/nearby?lat=12.9716&lng=77.5946&radius=100&query=${encodeURIComponent("'; DROP TABLE places; --")}`
+    );
+    assert('SQL injection in query param is safely handled without error',
+      injectionQuery.status === 200 &&
+      injectionQuery.data.count === 0
+    );
+
+    // Query exceeding maximum length (>100 characters)
+    const longQuery = 'a'.repeat(101);
+    const excessiveQuery = await getJson(
+      `/api/places/nearby?lat=12.9716&lng=77.5946&query=${longQuery}`
+    );
+    assert('Query parameter > 100 characters returns 400 Bad Request',
+      excessiveQuery.status === 400 &&
+      excessiveQuery.data.error.message.includes('100 characters')
+    );
+
+    // Empty query param gracefully handled
+    const emptyQuery = await getJson('/api/places/nearby?lat=12.9716&lng=77.5946&radius=100&query=');
+    assert('Empty query parameter returns 200 OK without errors',
+      emptyQuery.status === 200 &&
+      emptyQuery.data.data.length > 0
+    );
+
+    // Viewport bounds search with query param
+    const boundsWithQuery = await getJson(
+      '/api/places/bounds?minLat=12.90&minLng=77.50&maxLat=13.05&maxLng=77.70&query=Karavalli'
+    );
+    assert('Bounds search with keyword "Karavalli" returns matched place',
+      boundsWithQuery.status === 200 &&
+      boundsWithQuery.data.data.some((p) => p.name === 'Karavalli')
+    );
+
+    // Viewport bounds search with query > 100 characters returns 400
+    const boundsLongQuery = await getJson(
+      `/api/places/bounds?minLat=12.90&minLng=77.50&maxLat=13.05&maxLng=77.70&query=${longQuery}`
+    );
+    assert('Bounds search with query > 100 characters returns 400 Bad Request',
+      boundsLongQuery.status === 400
+    );
+
   } finally {
     await stopServer();
   }
 
   console.log('\n======================================================');
-  console.log(`DAY 7 GEOSPATIAL TEST RESULTS: ${passed} passed, ${failed} failed`);
+  console.log(`GEOSPATIAL & KEYWORD SEARCH TEST RESULTS: ${passed} passed, ${failed} failed`);
   console.log('======================================================\n');
 
   if (failed > 0) {

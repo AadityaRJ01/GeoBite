@@ -155,6 +155,8 @@ export async function fetchNearbyPlaces(params = {}) {
     limit,
     sortBy,
     sortOrder,
+    query: textQuery,
+    q,
   } = params;
 
   if (lat === undefined || lat === null || isNaN(Number(lat))) {
@@ -191,6 +193,10 @@ export async function fetchNearbyPlaces(params = {}) {
   }
   if (sortOrder) {
     query.set('sortOrder', sortOrder);
+  }
+  const searchQuery = textQuery || q;
+  if (searchQuery !== undefined && searchQuery !== null && String(searchQuery).trim() !== '') {
+    query.set('query', String(searchQuery).trim());
   }
 
   const response = await fetchJson(`/places/nearby?${query.toString()}`);
@@ -251,7 +257,7 @@ export async function fetchNearbyPlaces(params = {}) {
  * @returns {Promise<{ places: Array, count: number, success: boolean, bounds: Object }>}
  */
 export async function fetchPlacesInBounds(bounds = {}) {
-  const { minLat, minLng, maxLat, maxLng, category, minRating, maxPrice, limit } = bounds;
+  const { minLat, minLng, maxLat, maxLng, category, minRating, maxPrice, limit, query: textQuery, q } = bounds;
 
   if (minLat === undefined || minLng === undefined || maxLat === undefined || maxLng === undefined) {
     throw new ApiError('minLat, minLng, maxLat, and maxLng are required for bounds search.', 400);
@@ -274,6 +280,10 @@ export async function fetchPlacesInBounds(bounds = {}) {
   }
   if (limit !== undefined && limit !== null && String(limit).trim() !== '') {
     query.set('limit', String(limit));
+  }
+  const searchQuery = textQuery || q;
+  if (searchQuery !== undefined && searchQuery !== null && String(searchQuery).trim() !== '') {
+    query.set('query', String(searchQuery).trim());
   }
 
   const response = await fetchJson(`/places/bounds?${query.toString()}`);
