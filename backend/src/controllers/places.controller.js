@@ -3,11 +3,11 @@ import prisma from '../lib/prisma.js';
 
 /**
  * GET /api/places
- * Returns all active places, with optional ?category= filtering.
+ * Returns all active places, with optional ?category= and ?query= filtering.
  */
 export const getPlaces = async (req, res, next) => {
   try {
-    const { category } = req.query;
+    const { category, query, q } = req.query;
 
     const validCategories = ['restaurant', 'cafe', 'viewpoint', 'attraction'];
 
@@ -25,6 +25,17 @@ export const getPlaces = async (req, res, next) => {
         });
       }
       where.category = category;
+    }
+
+    // Optional text keyword search across name, description, address
+    const rawSearch = query || q;
+    if (rawSearch !== undefined && rawSearch !== null && String(rawSearch).trim() !== '') {
+      const term = String(rawSearch).trim();
+      where.OR = [
+        { name: { contains: term, mode: 'insensitive' } },
+        { description: { contains: term, mode: 'insensitive' } },
+        { address: { contains: term, mode: 'insensitive' } },
+      ];
     }
 
     const places = await prisma.place.findMany({
@@ -134,6 +145,8 @@ export const getNearbyPlaces = async (req, res, next) => {
       limit,
       sortBy,
       sortOrder,
+      query,
+      q,
     } = req.query;
 
     // 1. Validate latitude
@@ -314,6 +327,34 @@ export const getNearbyPlaces = async (req, res, next) => {
       parsedSortOrder = normalizedSortOrder;
     }
 
+    // 11. Validate and formulate full-text & keyword search
+    const rawSearch = query || q;
+    let searchCondition = Prisma.empty;
+    let trimmedQuery = null;
+
+    if (rawSearch !== undefined && rawSearch !== null && String(rawSearch).trim() !== '') {
+      trimmedQuery = String(rawSearch).trim();
+      if (trimmedQuery.length > 100) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            message: "Query parameter 'query' must not exceed 100 characters.",
+            statusCode: 400,
+          },
+        });
+      }
+      const likePattern = `%${trimmedQuery}%`;
+      searchCondition = Prisma.sql`
+        AND (
+          to_tsvector('english', name || ' ' || COALESCE(description, '') || ' ' || address) @@ plainto_tsquery('english', ${trimmedQuery})
+          OR name ILIKE ${likePattern}
+          OR COALESCE(description, '') ILIKE ${likePattern}
+          OR address ILIKE ${likePattern}
+          OR category::text ILIKE ${likePattern}
+        )
+      `;
+    }
+
     // Prepare parameterized SQL components
     const radiusMeters = parsedRadius * 1000;
 
@@ -341,7 +382,8 @@ export const getNearbyPlaces = async (req, res, next) => {
         )
         ${categoryCondition}
         ${ratingCondition}
-        ${priceCondition};
+        ${priceCondition}
+        ${searchCondition};
     `;
 
     const total = countResult[0]?.total ?? 0;
@@ -391,6 +433,7 @@ export const getNearbyPlaces = async (req, res, next) => {
         ${categoryCondition}
         ${ratingCondition}
         ${priceCondition}
+        ${searchCondition}
       ORDER BY ${orderClause}
       LIMIT ${parsedLimit}
       OFFSET ${offset};
@@ -418,6 +461,7 @@ export const getNearbyPlaces = async (req, res, next) => {
         latitude: parsedLat,
         longitude: parsedLng,
         radiusKm: parsedRadius,
+        query: trimmedQuery,
       },
       data: places,
     });
@@ -442,7 +486,7 @@ export const getNearbyPlaces = async (req, res, next) => {
  */
 export const getPlacesWithinBounds = async (req, res, next) => {
   try {
-    const { minLat, minLng, maxLat, maxLng, category, minRating, maxPrice, limit } = req.query;
+    const { minLat, minLng, maxLat, maxLng, category, minRating, maxPrice, limit, query, q } = req.query;
 
     // Validate coordinates presence
     if (minLat === undefined || minLng === undefined || maxLat === undefined || maxLng === undefined) {
@@ -592,6 +636,32 @@ export const getPlacesWithinBounds = async (req, res, next) => {
       ? Prisma.sql`AND "priceLevel" IN (${Prisma.join(allowedPriceLevels)})`
       : Prisma.empty;
 
+    // Optional text keyword search
+    const rawSearch = query || q;
+    let searchCondition = Prisma.empty;
+    if (rawSearch !== undefined && rawSearch !== null && String(rawSearch).trim() !== '') {
+      const term = String(rawSearch).trim();
+      if (term.length > 100) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            message: "Query parameter 'query' must not exceed 100 characters.",
+            statusCode: 400,
+          },
+        });
+      }
+      const likePattern = `%${term}%`;
+      searchCondition = Prisma.sql`
+        AND (
+          to_tsvector('english', name || ' ' || COALESCE(description, '') || ' ' || address) @@ plainto_tsquery('english', ${term})
+          OR name ILIKE ${likePattern}
+          OR COALESCE(description, '') ILIKE ${likePattern}
+          OR address ILIKE ${likePattern}
+          OR category::text ILIKE ${likePattern}
+        )
+      `;
+    }
+
     // Parameterized spatial query using PostGIS ST_MakeEnvelope and ST_Within
     const rawPlaces = await prisma.$queryRaw`
       SELECT 
@@ -617,6 +687,7 @@ export const getPlacesWithinBounds = async (req, res, next) => {
         ${categoryCondition}
         ${ratingCondition}
         ${priceCondition}
+        ${searchCondition}
       ORDER BY "averageRating" DESC, name ASC
       LIMIT ${parsedLimit};
     `;
