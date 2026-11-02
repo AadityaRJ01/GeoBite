@@ -362,5 +362,29 @@ export async function optimizeRoute({ placeIds, startPlaceId } = {}) {
   return response.data || response;
 }
 
+/**
+ * Benchmark routing algorithms across multiple runs to obtain median execution times.
+ * @param {Object} [params]
+ * @param {string} [params.scenario] - Preset scenario ('small' | 'medium' | 'large' | 'clustered' | 'dispersed' | 'all')
+ * @param {string[]} [params.placeIds] - Optional array of place UUIDs
+ * @param {string} [params.startPlaceId] - Optional starting place UUID
+ * @param {number} [params.runs=3] - Number of benchmark runs (1 to 10)
+ * @returns {Promise<Object>} Benchmark result
+ */
+export async function benchmarkRoutes({ scenario, placeIds, startPlaceId, runs = 3 } = {}) {
+  const body = { runs };
+  if (scenario) body.scenario = scenario;
+  if (placeIds && Array.isArray(placeIds)) body.placeIds = placeIds;
+  if (startPlaceId) body.startPlaceId = startPlaceId;
+
+  const response = await fetchJson('/routes/benchmark', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  return response.data || response;
+}
+
 export { API_BASE_URL };
 

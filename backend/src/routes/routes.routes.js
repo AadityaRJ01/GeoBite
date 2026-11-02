@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { optimizeRoute } from '../controllers/routes.controller.js';
+import { optimizeRoute, benchmarkRoute } from '../controllers/routes.controller.js';
 
 const router = Router();
 
@@ -8,5 +8,11 @@ const router = Router();
  * Optimizes a multi-stop itinerary across 2 to 10 selected places.
  */
 router.post('/optimize', optimizeRoute);
+
+/**
+ * POST /api/routes/benchmark
+ * Runs multi-iteration performance benchmarks across routing algorithms.
+ */
+router.post('/benchmark', benchmarkRoute);
 
 export default router;

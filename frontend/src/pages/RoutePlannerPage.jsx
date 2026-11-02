@@ -24,8 +24,10 @@ import {
   Info,
   RefreshCw,
   Flag,
+  Activity,
+  X,
 } from 'lucide-react';
-import { fetchPlaces, optimizeRoute } from '../services/placesApi';
+import { fetchPlaces, optimizeRoute, benchmarkRoutes } from '../services/placesApi';
 import RouteMap from '../components/route/RouteMap';
 import Footer from '../components/Footer';
 
@@ -423,6 +425,12 @@ export default function RoutePlannerPage() {
   const [optimizeError, setOptimizeError] = useState(null);
   const [routeResult, setRouteResult] = useState(null);
 
+  // Benchmark state
+  const [benchmarking, setBenchmarking] = useState(false);
+  const [benchmarkResult, setBenchmarkResult] = useState(null);
+  const [benchmarkError, setBenchmarkError] = useState(null);
+  const [showBenchmark, setShowBenchmark] = useState(false);
+
   // Active algorithm tab
   const [activeAlgo, setActiveAlgo] = useState('twoOpt');
 
@@ -509,6 +517,26 @@ export default function RoutePlannerPage() {
       setOptimizeError(err.message || 'Route optimization failed.');
     } finally {
       setOptimizing(false);
+    }
+  }, [selectedIds, startPlaceId]);
+
+  // Run performance benchmark (5 iterations for median execution times)
+  const handleBenchmark = useCallback(async () => {
+    if (selectedIds.length < 2) return;
+    setBenchmarking(true);
+    setBenchmarkError(null);
+    setShowBenchmark(true);
+    try {
+      const data = await benchmarkRoutes({
+        placeIds: selectedIds,
+        startPlaceId: startPlaceId || undefined,
+        runs: 5,
+      });
+      setBenchmarkResult(data);
+    } catch (err) {
+      setBenchmarkError(err.message || 'Benchmark execution failed.');
+    } finally {
+      setBenchmarking(false);
     }
   }, [selectedIds, startPlaceId]);
 
@@ -866,15 +894,117 @@ export default function RoutePlannerPage() {
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={handleOptimize}
-                    className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 border border-white/20 transition-all"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    Re-run
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleBenchmark}
+                      disabled={benchmarking}
+                      className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-teal-500/20 hover:bg-teal-500/30 border border-teal-400/40 text-teal-200 transition-all cursor-pointer disabled:opacity-50"
+                      title="Run a 5-iteration benchmark to calculate median runtimes"
+                    >
+                      <Activity className={`w-3.5 h-3.5 ${benchmarking ? 'animate-pulse text-teal-300' : ''}`} />
+                      <span>{benchmarking ? 'Benchmarking...' : 'Benchmark'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleOptimize}
+                      className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 border border-white/20 transition-all cursor-pointer"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      Re-run
+                    </button>
+                  </div>
                 </div>
+
+                {/* Compact Benchmark Summary */}
+                {showBenchmark && (
+                  <div className="bg-white rounded-3xl border border-teal-200/80 shadow-soft-sm p-4 sm:p-5 relative animate-in fade-in duration-200">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <Activity className="w-4 h-4 text-teal-600" />
+                        <h3 className="font-bold text-sm text-forest-950">
+                          Performance Benchmark Foundation (5 Runs Median)
+                        </h3>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowBenchmark(false)}
+                        className="text-slate-400 hover:text-slate-600 p-1 rounded-lg cursor-pointer"
+                        title="Dismiss benchmark view"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {benchmarking && (
+                      <div className="py-4 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-teal-600" />
+                        <span>Benchmarking Baseline, Nearest Neighbor, and 2-opt across 5 iterations...</span>
+                      </div>
+                    )}
+
+                    {benchmarkError && !benchmarking && (
+                      <div className="text-xs text-rose-600 bg-rose-50 border border-rose-200 p-3 rounded-xl">
+                        {benchmarkError}
+                      </div>
+                    )}
+
+                    {benchmarkResult && !benchmarking && (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          {/* Baseline */}
+                          <div className="bg-sand-50/80 rounded-2xl p-3 border border-sand-200">
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                              Baseline (O(N))
+                            </div>
+                            <div className="text-sm font-extrabold text-forest-950 font-mono mt-1">
+                              {benchmarkResult.metrics?.baseline?.distanceKm?.toFixed(2)} km
+                            </div>
+                            <div className="text-xs text-slate-500 mt-0.5">
+                              Median: <span className="font-semibold text-slate-700">{benchmarkResult.metrics?.baseline?.medianTimeMs?.toFixed(3)} ms</span>
+                            </div>
+                          </div>
+
+                          {/* Nearest Neighbor */}
+                          <div className="bg-amber-50/60 rounded-2xl p-3 border border-amber-200/80">
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-amber-700">
+                              Nearest Neighbor (O(N²))
+                            </div>
+                            <div className="text-sm font-extrabold text-forest-950 font-mono mt-1">
+                              {benchmarkResult.metrics?.nearestNeighbor?.distanceKm?.toFixed(2)} km
+                            </div>
+                            <div className="text-xs text-slate-500 mt-0.5">
+                              Median: <span className="font-semibold text-slate-700">{benchmarkResult.metrics?.nearestNeighbor?.medianTimeMs?.toFixed(3)} ms</span>
+                              <span className="ml-1 text-emerald-600 font-bold">(-{benchmarkResult.metrics?.nearestNeighbor?.improvementPercent}%)</span>
+                            </div>
+                          </div>
+
+                          {/* 2-opt */}
+                          <div className="bg-teal-50/60 rounded-2xl p-3 border border-teal-200/80">
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-teal-700">
+                              2-opt Local Search (O(K·N²))
+                            </div>
+                            <div className="text-sm font-extrabold text-forest-950 font-mono mt-1">
+                              {benchmarkResult.metrics?.twoOpt?.distanceKm?.toFixed(2)} km
+                            </div>
+                            <div className="text-xs text-slate-500 mt-0.5">
+                              Median: <span className="font-semibold text-slate-700">{benchmarkResult.metrics?.twoOpt?.medianTimeMs?.toFixed(3)} ms</span>
+                              <span className="ml-1 text-emerald-600 font-bold">(-{benchmarkResult.metrics?.twoOpt?.improvementPercent}%)</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {benchmarkResult.recommendation?.reason && (
+                          <div className="text-xs text-forest-800 bg-teal-50/50 border border-teal-100 p-2.5 rounded-xl">
+                            <span className="font-bold text-teal-900">Recommendation: </span>
+                            {benchmarkResult.recommendation.reason}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Algorithm tabs */}
                 <div className="flex flex-col sm:flex-row gap-2">
