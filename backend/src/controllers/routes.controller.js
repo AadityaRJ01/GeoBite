@@ -1,5 +1,10 @@
 import prisma from '../lib/prisma.js';
 import { optimizeRouteComparison } from '../algorithms/routeOptimizer.js';
+import {
+  benchmarkDataset,
+  runStandardBenchmarkSuite,
+  BENCHMARK_DATASETS,
+} from '../algorithms/routeBenchmark.js';
 
 /**
  * POST /api/routes/optimize
@@ -149,6 +154,203 @@ export const optimizeRoute = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       data: optimizationResult,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/routes/benchmark
+ * Benchmarks routing algorithms across standard scenarios or custom place sets.
+ * Runs multiple iterations to report median execution times and metrics.
+ *
+ * Request body:
+ * {
+ *   "scenario": "small" | "medium" | "large" | "clustered" | "dispersed" | "all", // Optional preset
+ *   "placeIds": ["uuid-1", ...],                                                 // Optional: 2 to 20 DB IDs
+ *   "places": [{ id, name, latitude, longitude }, ...],                         // Optional: 2 to 40 custom stops
+ *   "runs": 3,                                                                  // Optional: 1 to 10 (default 3)
+ *   "startPlaceId": "uuid-1"                                                    // Optional pinned start stop
+ * }
+ */
+export const benchmarkRoute = async (req, res, next) => {
+  try {
+    const { scenario, placeIds, places: customPlaces, runs: rawRuns, startPlaceId } = req.body || {};
+
+    // Validate runs parameter (1 to 10, default 3)
+    let runs = 3;
+    if (rawRuns !== undefined && rawRuns !== null) {
+      runs = Number(rawRuns);
+      if (!Number.isInteger(runs) || runs < 1 || runs > 10) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            message: "Parameter 'runs' must be an integer between 1 and 10.",
+            statusCode: 400,
+          },
+        });
+      }
+    }
+
+    // Mode 1: Preset Standard Scenario
+    if (scenario) {
+      const normalizedScenario = String(scenario).toLowerCase().trim();
+      if (normalizedScenario === 'all') {
+        const suiteResult = runStandardBenchmarkSuite({ runs });
+        return res.status(200).json({
+          success: true,
+          data: suiteResult,
+        });
+      }
+
+      const preset = BENCHMARK_DATASETS[normalizedScenario];
+      if (!preset) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            message: `Invalid scenario '${scenario}'. Valid options: small, medium, large, clustered, dispersed, all.`,
+            statusCode: 400,
+          },
+        });
+      }
+
+      const result = benchmarkDataset(preset.places, preset.name, {
+        runs,
+        startPlaceId: startPlaceId || preset.places[0]?.id,
+      });
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          scenario: normalizedScenario,
+          description: preset.description,
+          ...result,
+        },
+      });
+    }
+
+    // Mode 2: Custom Place IDs from Database
+    if (placeIds) {
+      if (!Array.isArray(placeIds) || placeIds.length < 2) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            message: "Field 'placeIds' must be an array with at least 2 place IDs.",
+            statusCode: 400,
+          },
+        });
+      }
+
+      if (placeIds.length > 20) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            message: "A maximum of 20 places can be benchmarked per request to prevent excessive CPU usage.",
+            statusCode: 400,
+          },
+        });
+      }
+
+      const dbPlaces = await prisma.place.findMany({
+        where: { id: { in: placeIds }, isActive: true },
+        select: { id: true, name: true, latitude: true, longitude: true },
+      });
+
+      if (dbPlaces.length !== placeIds.length) {
+        const foundIds = new Set(dbPlaces.map((p) => p.id));
+        const missing = placeIds.filter((id) => !foundIds.has(id));
+        return res.status(404).json({
+          success: false,
+          error: {
+            message: `The following place IDs were not found: ${missing.join(', ')}`,
+            statusCode: 404,
+          },
+        });
+      }
+
+      const map = new Map(dbPlaces.map((p) => [p.id, p]));
+      const ordered = placeIds.map((id) => map.get(id));
+
+      const result = benchmarkDataset(ordered, `Selected Places (${ordered.length} stops)`, {
+        runs,
+        startPlaceId,
+      });
+
+      return res.status(200).json({
+        success: true,
+        data: result,
+      });
+    }
+
+    // Mode 3: Inline Custom Places
+    if (customPlaces) {
+      if (!Array.isArray(customPlaces) || customPlaces.length < 2) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            message: "Field 'places' must be an array of at least 2 place objects.",
+            statusCode: 400,
+          },
+        });
+      }
+
+      if (customPlaces.length > 40) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            message: "A maximum of 40 custom places can be benchmarked per request.",
+            statusCode: 400,
+          },
+        });
+      }
+
+      // Validate coordinates
+      for (let i = 0; i < customPlaces.length; i++) {
+        const p = customPlaces[i];
+        if (
+          !p ||
+          typeof p.latitude !== 'number' ||
+          typeof p.longitude !== 'number' ||
+          !Number.isFinite(p.latitude) ||
+          !Number.isFinite(p.longitude) ||
+          p.latitude < -90 ||
+          p.latitude > 90 ||
+          p.longitude < -180 ||
+          p.longitude > 180
+        ) {
+          return res.status(400).json({
+            success: false,
+            error: {
+              message: `Place at index ${i} has invalid geographic coordinates.`,
+              statusCode: 400,
+            },
+          });
+        }
+      }
+
+      const result = benchmarkDataset(customPlaces, `Custom Route (${customPlaces.length} stops)`, {
+        runs,
+        startPlaceId,
+      });
+
+      return res.status(200).json({
+        success: true,
+        data: result,
+      });
+    }
+
+    // If no parameters provided, default to small preset
+    const defaultPreset = BENCHMARK_DATASETS.small;
+    const defaultResult = benchmarkDataset(defaultPreset.places, defaultPreset.name, { runs });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        scenario: 'small',
+        description: defaultPreset.description,
+        ...defaultResult,
+      },
     });
   } catch (error) {
     next(error);

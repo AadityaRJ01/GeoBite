@@ -1,4 +1,5 @@
 import { performance } from 'perf_hooks';
+import { recommendBestRoute } from './routeRecommender.js';
 
 /**
  * GeoBite Route Optimization Engine
@@ -487,21 +488,10 @@ export function optimizeRouteComparison(places, startPlaceId = null) {
     baseline.totalDistanceKm
   );
 
-  // Determine best algorithm:
-  // Sort by totalDistanceKm ascending; tie-break prefers twoOpt > nearestNeighbor > baseline
-  const priority = { twoOpt: 0, nearestNeighbor: 1, baseline: 2 };
-  const candidates = [twoOpt, nearestNeighbor, baseline];
-  candidates.sort((a, b) => {
-    const diff = a.totalDistanceKm - b.totalDistanceKm;
-    if (Math.abs(diff) > 1e-4) {
-      return diff;
-    }
-    return priority[a.algorithm] - priority[b.algorithm];
-  });
-  const bestRoute = candidates[0];
-
-  const distanceSavedKm = Number(
-    Math.max(0, baseline.totalDistanceKm - bestRoute.totalDistanceKm).toFixed(3)
+  // 4. Recommendation & comparison metrics
+  const recommendation = recommendBestRoute(
+    { baseline, nearestNeighbor, twoOpt },
+    safePlaces.length
   );
 
   return {
@@ -514,13 +504,16 @@ export function optimizeRouteComparison(places, startPlaceId = null) {
       nearestNeighbor,
       twoOpt,
     },
-    recommended: bestRoute.algorithm,
-    bestRoute,
+    recommended: recommendation.recommendedAlgorithm,
+    bestRoute: recommendation.bestRoute,
+    recommendationReason: recommendation.reason,
+    improvements: recommendation.improvements,
     summary: {
       baselineDistanceKm: baseline.totalDistanceKm,
-      optimizedDistanceKm: bestRoute.totalDistanceKm,
-      distanceSavedKm,
-      improvementPercent: bestRoute.improvementPercent,
+      optimizedDistanceKm: recommendation.bestRoute.totalDistanceKm,
+      distanceSavedKm: recommendation.distanceSavedKm,
+      improvementPercent: recommendation.improvementPercent,
+      twoOptOverNNPercent: recommendation.improvements.twoOptOverNNPercent,
     },
   };
 }

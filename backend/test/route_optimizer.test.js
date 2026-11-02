@@ -8,6 +8,16 @@ import {
   solveTwoOpt,
   optimizeRouteComparison,
 } from '../src/algorithms/routeOptimizer.js';
+import {
+  recommendBestRoute,
+  calculateRouteImprovements,
+  isValidRouteResult,
+} from '../src/algorithms/routeRecommender.js';
+import {
+  benchmarkDataset,
+  runStandardBenchmarkSuite,
+  BENCHMARK_DATASETS,
+} from '../src/algorithms/routeBenchmark.js';
 
 let server;
 let baseUrl;
@@ -311,6 +321,144 @@ async function runAllTests() {
 
   console.log(`    [50 Stops Benchmark] Baseline: ${bench50Base.totalDistanceKm}km (${bench50Base.executionTimeMs}ms) | NN: ${bench50NN.totalDistanceKm}km (${bench50NN.executionTimeMs}ms) | 2-opt: ${bench50TwoOpt.totalDistanceKm}km (${bench50TwoOpt.executionTimeMs}ms, ${bench50TwoOpt.iterations} iter)`);
 
+  // --- DAY 12: RECOMMENDATION ENGINE & DIFFICULT SCENARIO TESTS ---
+  console.log('\n--- 3f. Testing Route Recommendation Engine & Improvements ---');
+  // Safe zero-distance improvements
+  const zeroImprov = calculateRouteImprovements(0, 0, 0);
+  assert('Zero-distance improvements handle division-by-zero safely (0%)',
+    zeroImprov.nnImprovementPercent === 0 &&
+    zeroImprov.twoOptImprovementPercent === 0 &&
+    zeroImprov.twoOptOverNNPercent === 0
+  );
+
+  // Recommendation on clear improvement
+  const mockComparison = {
+    baseline: { totalDistanceKm: 100, orderedPlaceIds: ['p1', 'p2', 'p3'], legs: [{}, {}] },
+    nearestNeighbor: { totalDistanceKm: 80, orderedPlaceIds: ['p1', 'p2', 'p3'], legs: [{}, {}] },
+    twoOpt: { totalDistanceKm: 70, orderedPlaceIds: ['p1', 'p3', 'p2'], legs: [{}, {}] },
+  };
+  const recResult = recommendBestRoute(mockComparison, 3);
+  assert('Recommends twoOpt when it produces the lowest valid distance', recResult.recommendedAlgorithm === 'twoOpt');
+  assert('Calculates 30% improvement over Baseline', recResult.improvements.twoOptImprovementPercent === 30);
+  assert('Calculates 12.5% additional improvement of 2-opt over NN', recResult.improvements.twoOptOverNNPercent === 12.5);
+
+  // Deterministic tie-breaking
+  const tieComparison = {
+    baseline: { totalDistanceKm: 60, orderedPlaceIds: ['p1', 'p2'], legs: [{}] },
+    nearestNeighbor: { totalDistanceKm: 50, orderedPlaceIds: ['p1', 'p2'], legs: [{}] },
+    twoOpt: { totalDistanceKm: 50, orderedPlaceIds: ['p1', 'p2'], legs: [{}] },
+  };
+  const tieRec = recommendBestRoute(tieComparison, 2);
+  assert('Deterministic tie-breaker prioritizes twoOpt over NN on equal distance', tieRec.recommendedAlgorithm === 'twoOpt');
+
+  // Candidate validation & rejection
+  const corruptCandidate = { totalDistanceKm: 50, orderedPlaceIds: ['p1', 'p1'] }; // Duplicate stop!
+  assert('isValidRouteResult rejects duplicate stops', isValidRouteResult(corruptCandidate, 2) === false);
+  const incompleteCandidate = { totalDistanceKm: 50, orderedPlaceIds: ['p1'] }; // Missing stop!
+  assert('isValidRouteResult rejects incomplete stop lists', isValidRouteResult(incompleteCandidate, 2) === false);
+
+  console.log('\n--- 3g. Testing Difficult Route Scenarios ---');
+  // 1. Already-optimal route (linear monotonic stops)
+  const linearStops = [
+    { id: 'lin-1', name: 'Stop 1', latitude: 12.90, longitude: 77.50 },
+    { id: 'lin-2', name: 'Stop 2', latitude: 12.90, longitude: 77.55 },
+    { id: 'lin-3', name: 'Stop 3', latitude: 12.90, longitude: 77.60 },
+    { id: 'lin-4', name: 'Stop 4', latitude: 12.90, longitude: 77.65 },
+  ];
+  const linearBase = solveBaseline(linearStops);
+  const linearNN = solveNearestNeighbor(linearStops, 'lin-1');
+  const linearTwoOpt = solveTwoOpt(linearNN.orderedPlaces, true);
+  assert('Already-optimal linear route: NN and 2-opt preserve optimal order',
+    linearBase.totalDistanceKm === linearNN.totalDistanceKm &&
+    linearNN.totalDistanceKm === linearTwoOpt.totalDistanceKm
+  );
+  assert('Already-optimal route: 2-opt completes in 1 verification pass without modifying route',
+    linearTwoOpt.iterations <= 1 &&
+    linearTwoOpt.totalDistanceKm === linearBase.totalDistanceKm
+  );
+
+  // 2. Multiple locations with identical coordinates
+  const tripleDuplicates = [
+    { id: 'dup-A', name: 'A', latitude: 12.9716, longitude: 77.5946 },
+    { id: 'dup-B', name: 'B', latitude: 12.9716, longitude: 77.5946 },
+    { id: 'dup-C', name: 'C', latitude: 12.9716, longitude: 77.5946 },
+  ];
+  const dupNNResult = solveNearestNeighbor(tripleDuplicates, 'dup-A');
+  assert('Identical coordinates route visits all stops with 0 distance',
+    dupNNResult.orderedPlaceIds.length === 3 &&
+    dupNNResult.totalDistanceKm === 0
+  );
+
+  // 3. Very close coordinates (~5 meters apart)
+  const microStops = [
+    { id: 'm1', name: 'Door 1', latitude: 12.97160, longitude: 77.59460 },
+    { id: 'm2', name: 'Door 2', latitude: 12.97164, longitude: 77.59463 }, // ~5.5m away
+  ];
+  const microDist = haversineDistance(microStops[0], microStops[1]);
+  assert('Micro-distance (~5m) computed with numerical stability (> 0, < 0.01 km)',
+    microDist > 0 && microDist < 0.01
+  );
+
+  // 4. Widely separated regional coordinates (Bengaluru to Belagavi, ~450 km)
+  const regionalDist = haversineDistance(
+    { latitude: 12.9716, longitude: 77.5946 }, // Bengaluru
+    { latitude: 15.8497, longitude: 74.4977 }  // Belagavi
+  );
+  assert('Regional distance (Bengaluru to Belagavi) is realistic (~450-480 km)',
+    regionalDist > 440 && regionalDist < 480,
+    `Got ${regionalDist.toFixed(1)} km`
+  );
+
+  // 5. Different starting locations produce distinct pinned starting stops
+  const loopStops = [
+    { id: 'lp-1', name: 'Corner 1', latitude: 12.90, longitude: 77.50 },
+    { id: 'lp-2', name: 'Corner 2', latitude: 12.95, longitude: 77.50 },
+    { id: 'lp-3', name: 'Corner 3', latitude: 12.95, longitude: 77.55 },
+    { id: 'lp-4', name: 'Corner 4', latitude: 12.90, longitude: 77.55 },
+  ];
+  const startAt1 = solveNearestNeighbor(loopStops, 'lp-1');
+  const startAt3 = solveNearestNeighbor(loopStops, 'lp-3');
+  assert('Different startPlaceId pins different departure stop',
+    startAt1.orderedPlaceIds[0] === 'lp-1' &&
+    startAt3.orderedPlaceIds[0] === 'lp-3'
+  );
+
+  console.log('\n--- 3h. Testing Benchmarking Engine Foundation ---');
+  // Benchmark Dataset A: Small
+  const benchSmall = benchmarkDataset(BENCHMARK_DATASETS.small.places, 'Small Route', { runs: 3 });
+  assert('Benchmark Dataset A (Small) completes and marks all algorithms valid',
+    benchSmall.stopCount === 5 &&
+    benchSmall.metrics.baseline.isValid &&
+    benchSmall.metrics.nearestNeighbor.isValid &&
+    benchSmall.metrics.twoOpt.isValid
+  );
+  assert('Benchmark reports valid median execution times',
+    benchSmall.metrics.baseline.medianTimeMs >= 0 &&
+    benchSmall.metrics.twoOpt.medianTimeMs >= 0
+  );
+
+  // Benchmark Dataset D: Clustered
+  const benchClustered = benchmarkDataset(BENCHMARK_DATASETS.clustered.places, 'Clustered', { runs: 3 });
+  assert('Benchmark Dataset D (Clustered) handles 12 concentrated stops',
+    benchClustered.stopCount === 12 &&
+    benchClustered.metrics.twoOpt.distanceKm <= benchClustered.metrics.nearestNeighbor.distanceKm + 1e-4
+  );
+
+  // Benchmark Dataset E: Dispersed
+  const benchDispersed = benchmarkDataset(BENCHMARK_DATASETS.dispersed.places, 'Dispersed', { runs: 3 });
+  assert('Benchmark Dataset E (Dispersed) handles 10 widely spread stops',
+    benchDispersed.stopCount === 10 &&
+    benchDispersed.metrics.baseline.distanceKm > 500
+  );
+
+  // Full Standard Suite execution
+  const suiteReport = runStandardBenchmarkSuite({ runs: 2 });
+  assert('runStandardBenchmarkSuite executes all 5 standard scenarios',
+    suiteReport.scenarioCount === 5 &&
+    suiteReport.scenarios.length === 5 &&
+    suiteReport.totalBenchmarkTimeMs > 0
+  );
+
   // --- INTEGRATION TESTS: Backend HTTP Endpoint ---
   try {
     await startServer();
@@ -412,6 +560,85 @@ async function runAllTests() {
     assert('GET /api/places/nearby returns 200 OK with distance calculation',
       nearbyPlaces.status === 200 && nearbyPlaces.data.count > 0 && typeof nearbyPlaces.data.data[0].distanceMeters === 'number'
     );
+
+    // ── 7. DAY 12: Benchmark API Integration Tests (POST /api/routes/benchmark) ──
+    console.log('\n--- 7. Testing POST /api/routes/benchmark ---');
+
+    // Preset scenario 'small'
+    const benchResSmall = await postJson('/api/routes/benchmark', {
+      scenario: 'small',
+      runs: 2,
+    });
+    assert('POST /api/routes/benchmark with scenario=small returns 200 OK', benchResSmall.status === 200);
+    assert('Benchmark response includes median timing metrics for all algorithms',
+      benchResSmall.data.data.metrics.baseline &&
+      benchResSmall.data.data.metrics.nearestNeighbor &&
+      benchResSmall.data.data.metrics.twoOpt &&
+      typeof benchResSmall.data.data.metrics.twoOpt.medianTimeMs === 'number'
+    );
+    assert('Benchmark response contains recommendation with reason',
+      benchResSmall.data.data.recommendation &&
+      typeof benchResSmall.data.data.recommendation.reason === 'string'
+    );
+
+    // Preset scenario 'all'
+    const benchResAll = await postJson('/api/routes/benchmark', {
+      scenario: 'all',
+      runs: 1,
+    });
+    assert('POST /api/routes/benchmark with scenario=all returns 5 standard scenarios',
+      benchResAll.status === 200 &&
+      benchResAll.data.data.scenarioCount === 5
+    );
+
+    // Custom place IDs from database
+    const benchDbPlaces = await postJson('/api/routes/benchmark', {
+      placeIds: [testPlaceIds[0], testPlaceIds[1], testPlaceIds[2]],
+      runs: 2,
+    });
+    assert('POST /api/routes/benchmark with valid DB placeIds returns 200 OK',
+      benchDbPlaces.status === 200 &&
+      benchDbPlaces.data.data.stopCount === 3
+    );
+
+    // Custom inline coordinates
+    const customBenchmarkStops = [
+      { id: 'c-1', name: 'Stop 1', latitude: 12.97, longitude: 77.59 },
+      { id: 'c-2', name: 'Stop 2', latitude: 12.98, longitude: 77.60 },
+      { id: 'c-3', name: 'Stop 3', latitude: 12.96, longitude: 77.61 },
+    ];
+    const benchCustom = await postJson('/api/routes/benchmark', {
+      places: customBenchmarkStops,
+      runs: 2,
+    });
+    assert('POST /api/routes/benchmark with custom stops returns 200 OK',
+      benchCustom.status === 200 &&
+      benchCustom.data.data.stopCount === 3
+    );
+
+    // Validation: Invalid scenario name
+    const invalidScenario = await postJson('/api/routes/benchmark', {
+      scenario: 'nonexistent-scenario',
+    });
+    assert('Invalid scenario name returns 400 Bad Request', invalidScenario.status === 400);
+
+    // Validation: Runs out of bounds (> 10)
+    const excessiveRuns = await postJson('/api/routes/benchmark', {
+      runs: 25,
+    });
+    assert('Excessive runs (> 10) returns 400 Bad Request', excessiveRuns.status === 400);
+
+    // Validation: Runs < 1
+    const negativeRuns = await postJson('/api/routes/benchmark', {
+      runs: 0,
+    });
+    assert('Non-positive runs returns 400 Bad Request', negativeRuns.status === 400);
+
+    // Validation: placeIds with fewer than 2 stops
+    const singlePlaceIdBench = await postJson('/api/routes/benchmark', {
+      placeIds: [testPlaceIds[0]],
+    });
+    assert('placeIds with fewer than 2 stops returns 400', singlePlaceIdBench.status === 400);
 
   } finally {
     await stopServer();
