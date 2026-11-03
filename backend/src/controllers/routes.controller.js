@@ -5,6 +5,7 @@ import {
   runStandardBenchmarkSuite,
   BENCHMARK_DATASETS,
 } from '../algorithms/routeBenchmark.js';
+import { getRoadRoute } from '../services/osrm.service.js';
 
 /**
  * POST /api/routes/optimize
@@ -351,6 +352,98 @@ export const benchmarkRoute = async (req, res, next) => {
         description: defaultPreset.description,
         ...defaultResult,
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/routes/road-route
+ * Fetches real road-network routing geometry and driving duration from OSRM.
+ *
+ * Request body:
+ * {
+ *   "stops": [{ "id": "p1", "latitude": 12.97, "longitude": 77.59 }, ...], // 2-25 stops
+ *   // OR
+ *   "placeIds": ["uuid-1", "uuid-2", ...] // 2-25 place UUIDs
+ * }
+ */
+export const getRoadRouteHandler = async (req, res, next) => {
+  try {
+    const { stops, placeIds } = req.body || {};
+
+    let targetStops = stops;
+
+    // Mode A: Resolve placeIds from database in the exact requested order
+    if (placeIds && Array.isArray(placeIds)) {
+      if (placeIds.length < 2) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            message: "Field 'placeIds' must contain at least 2 place IDs.",
+            statusCode: 400,
+          },
+        });
+      }
+
+      if (placeIds.length > 25) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            message: "A maximum of 25 places can be road-routed per request.",
+            statusCode: 400,
+          },
+        });
+      }
+
+      const dbPlaces = await prisma.place.findMany({
+        where: { id: { in: placeIds }, isActive: true },
+        select: { id: true, name: true, latitude: true, longitude: true },
+      });
+
+      if (dbPlaces.length !== placeIds.length) {
+        const foundIds = new Set(dbPlaces.map((p) => p.id));
+        const missing = placeIds.filter((id) => !foundIds.has(id));
+        return res.status(404).json({
+          success: false,
+          error: {
+            message: `The following place IDs were not found: ${missing.join(', ')}`,
+            statusCode: 404,
+          },
+        });
+      }
+
+      const map = new Map(dbPlaces.map((p) => [p.id, p]));
+      targetStops = placeIds.map((id) => map.get(id));
+    }
+
+    // Mode B: Direct inline stops array
+    if (!targetStops || !Array.isArray(targetStops)) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: "Request body must include either a 'stops' array or 'placeIds' array.",
+          statusCode: 400,
+        },
+      });
+    }
+
+    if (targetStops.length < 2) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: "At least 2 stops are required to calculate a road route.",
+          statusCode: 400,
+        },
+      });
+    }
+
+    const roadRouteData = await getRoadRoute(targetStops);
+
+    return res.status(200).json({
+      success: true,
+      data: roadRouteData,
     });
   } catch (error) {
     next(error);

@@ -26,8 +26,9 @@ import {
   Flag,
   Activity,
   X,
+  Car,
 } from 'lucide-react';
-import { fetchPlaces, optimizeRoute, benchmarkRoutes } from '../services/placesApi';
+import { fetchPlaces, optimizeRoute, benchmarkRoutes, fetchRoadRoute } from '../services/placesApi';
 import RouteMap from '../components/route/RouteMap';
 import Footer from '../components/Footer';
 
@@ -547,6 +548,52 @@ export default function RoutePlannerPage() {
   // Active route result for current algo tab
   const activeResult = routeResult?.results?.[activeAlgo] || routeResult?.bestRoute || null;
 
+  // Road Routing (OSRM) State
+  const [roadRoute, setRoadRoute] = useState(null);
+  const [roadLoading, setRoadLoading] = useState(false);
+  const [roadError, setRoadError] = useState(null);
+
+  // Automatically retrieve real road routing whenever active route or algorithm changes
+  useEffect(() => {
+    if (!activeResult || !activeResult.orderedPlaces || activeResult.orderedPlaces.length < 2) {
+      setRoadRoute(null);
+      setRoadLoading(false);
+      setRoadError(null);
+      return;
+    }
+
+    let isMounted = true;
+    setRoadLoading(true);
+    setRoadError(null);
+
+    const stops = activeResult.orderedPlaces.map((p) => ({
+      id: p.id,
+      name: p.name,
+      latitude: p.latitude,
+      longitude: p.longitude,
+    }));
+
+    fetchRoadRoute({ stops })
+      .then((data) => {
+        if (isMounted) {
+          setRoadRoute(data);
+          setRoadLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (isMounted) {
+          console.warn('OSRM road routing fallback:', err.message);
+          setRoadError(err.message || 'Road routing temporarily unavailable.');
+          setRoadRoute(null);
+          setRoadLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activeResult]);
+
   return (
     <div className="min-h-screen flex flex-col bg-sand-50 selection:bg-teal-500 selection:text-white">
       {/* ── Header ──────────────────────────────────────────────────── */}
@@ -1020,10 +1067,71 @@ export default function RoutePlannerPage() {
                   ))}
                 </div>
 
+                {/* Navigation Estimate (OSRM Road Network) */}
+                <div className="bg-white rounded-2xl border border-teal-200/80 shadow-soft-sm p-4 flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-teal-50 border border-teal-200 flex items-center justify-center shrink-0">
+                      <Car className="w-5 h-5 text-teal-700" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold uppercase tracking-wider text-teal-900">
+                          Navigation Estimate (Road Network)
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-100 text-teal-800">
+                          {roadRoute?.provider || 'OSRM'} • {roadRoute?.profile || 'driving'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Road-following driving route for <span className="font-semibold text-forest-900">{ALGO_META[activeAlgo]?.label}</span>. Distinct from straight-line optimization distance.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    {roadLoading && (
+                      <div className="text-xs text-slate-500 flex items-center gap-1.5 font-medium">
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-teal-600" />
+                        <span>Fetching road geometry...</span>
+                      </div>
+                    )}
+
+                    {!roadLoading && roadRoute && (
+                      <div className="flex items-center gap-4">
+                        <div className="text-right">
+                          <div className="text-sm font-extrabold text-forest-950 font-mono">
+                            {roadRoute.distanceKm?.toFixed(2)} km
+                          </div>
+                          <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
+                            Road Distance
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-sm font-extrabold text-teal-700 font-mono">
+                            ~{roadRoute.durationMinutes} min
+                          </div>
+                          <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
+                            Est. Driving
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {!roadLoading && roadError && (
+                      <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-xl flex items-center gap-1.5">
+                        <span>Road estimates unavailable (using straight-line preview)</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 {/* Route Map */}
                 <RouteMap
                   routeResult={routeResult}
                   algorithm={activeAlgo}
+                  roadRoute={roadRoute}
+                  roadLoading={roadLoading}
+                  roadError={roadError}
                 />
 
                 {/* Leg breakdown */}
