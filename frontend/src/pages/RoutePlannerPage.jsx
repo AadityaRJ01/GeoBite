@@ -634,6 +634,15 @@ export default function RoutePlannerPage() {
                 </div>
               )}
 
+              <Link
+                to="/benchmark"
+                className="hidden md:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-forest-900 bg-sand-100 hover:bg-sand-200 transition-colors"
+                title="Open Algorithm Benchmark Dashboard"
+              >
+                <BarChart2 className="w-3.5 h-3.5 text-teal-600" />
+                <span>Benchmark</span>
+              </Link>
+
               <button
                 type="button"
                 onClick={handleOptimize}
@@ -1048,6 +1057,17 @@ export default function RoutePlannerPage() {
                             {benchmarkResult.recommendation.reason}
                           </div>
                         )}
+
+                        <div className="pt-1 flex items-center justify-between border-t border-forest-100/60 text-xs">
+                          <span className="text-slate-500">Want deeper scalability & multi-dataset analysis?</span>
+                          <Link
+                            to="/benchmark"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-teal-900 bg-teal-100/70 hover:bg-teal-200/80 border border-teal-300 transition-colors shadow-soft-sm"
+                          >
+                            <BarChart2 className="w-3.5 h-3.5 text-teal-700" />
+                            <span>View Full Benchmark Dashboard</span>
+                          </Link>
+                        </div>
                       </div>
                     )}
                   </div>

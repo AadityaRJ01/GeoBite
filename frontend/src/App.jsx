@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import LandingPage from './pages/LandingPage';
 import DiscoveryPage from './pages/DiscoveryPage';
 import RoutePlannerPage from './pages/RoutePlannerPage';
+import BenchmarkPage from './pages/BenchmarkPage';
 
 function App() {
   return (
@@ -12,6 +13,7 @@ function App() {
         <Route path="/discover" element={<DiscoveryPage />} />
         <Route path="/places" element={<DiscoveryPage />} />
         <Route path="/route" element={<RoutePlannerPage />} />
+        <Route path="/benchmark" element={<BenchmarkPage />} />
         {/* Fallback to landing page */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

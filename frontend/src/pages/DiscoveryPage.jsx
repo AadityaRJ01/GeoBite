@@ -7,7 +7,8 @@ import {
   Sparkles, 
   ArrowLeft,
   RefreshCw,
-  Route
+  Route,
+  BarChart2
 } from 'lucide-react';
 import { fetchNearbyPlaces, fetchPlacesInBounds, fetchHealth } from '../services/placesApi';
 import DiscoveryControls from '../components/discovery/DiscoveryControls';
@@ -333,7 +334,7 @@ export default function DiscoveryPage() {
               </Link>
             </div>
 
-            {/* Header Right: Route Planner Shortcut, Refresh, Health Pill */}
+            {/* Header Right: Route Planner Shortcut, Benchmark Shortcut, Refresh, Health Pill */}
             <div className="flex items-center gap-3">
               <Link
                 to="/route"
@@ -342,6 +343,15 @@ export default function DiscoveryPage() {
               >
                 <Route className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Plan Route</span>
+              </Link>
+
+              <Link
+                to="/benchmark"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-700 hover:text-forest-900 bg-sand-100 hover:bg-sand-200 transition-colors"
+                title="Open the Algorithm Benchmark Dashboard"
+              >
+                <BarChart2 className="w-3.5 h-3.5 text-teal-600" />
+                <span className="hidden md:inline">Benchmark</span>
               </Link>
 
               <button
