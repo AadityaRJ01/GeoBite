@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Navigation, Star, Clock } from 'lucide-react';
+import { Navigation, Star, Clock, Car, AlertTriangle, Loader2 } from 'lucide-react';
 
 const DEFAULT_CENTER = [12.9716, 77.5946];
 const DEFAULT_ZOOM = 12;
@@ -71,7 +71,13 @@ function RouteViewController({ orderedCoordinates }) {
   return null;
 }
 
-export default function RouteMap({ routeResult, algorithm }) {
+export default function RouteMap({
+  routeResult,
+  algorithm,
+  roadRoute = null,
+  roadLoading = false,
+  roadError = null,
+}) {
   const markerRefs = useRef({});
 
   const activeResult = useMemo(() => {
@@ -91,6 +97,24 @@ export default function RouteMap({ routeResult, algorithm }) {
     return activeResult?.legs || [];
   }, [activeResult]);
 
+  // Convert GeoJSON [longitude, latitude] into Leaflet [latitude, longitude]
+  const roadPositions = useMemo(() => {
+    if (!roadRoute?.geometry?.coordinates || !Array.isArray(roadRoute.geometry.coordinates)) {
+      return null;
+    }
+    const coords = roadRoute.geometry.coordinates
+      .filter(([lng, lat]) => typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng))
+      .map(([lng, lat]) => [lat, lng]);
+
+    return coords.length > 1 ? coords : null;
+  }, [roadRoute]);
+
+  // Fit bounds to road positions if available, otherwise straight-line coordinates
+  const viewCoordinates = useMemo(() => {
+    if (roadPositions && roadPositions.length > 1) return roadPositions;
+    return orderedCoordinates;
+  }, [roadPositions, orderedCoordinates]);
+
   const lineColor = ALGO_COLORS[algorithm] || ALGO_COLORS.twoOpt;
 
   // Start place ID (first stop in this algorithm's order)
@@ -98,9 +122,9 @@ export default function RouteMap({ routeResult, algorithm }) {
 
   // Initial center for map
   const initialCenter = useMemo(() => {
-    if (orderedCoordinates.length > 0) return orderedCoordinates[0];
+    if (viewCoordinates.length > 0) return viewCoordinates[0];
     return DEFAULT_CENTER;
-  }, [orderedCoordinates]);
+  }, [viewCoordinates]);
 
   if (!activeResult) {
     return (
@@ -112,18 +136,44 @@ export default function RouteMap({ routeResult, algorithm }) {
 
   return (
     <div className="relative w-full h-[420px] lg:h-[480px] rounded-3xl overflow-hidden border border-forest-200/90 shadow-soft-md bg-sand-100">
-      {/* Stats overlay */}
+      {/* Optimization Haversine Stats overlay (Left) */}
       <div className="absolute top-4 left-4 z-[400] bg-white/93 backdrop-blur-md px-3.5 py-2 rounded-2xl border border-forest-100 shadow-soft-sm flex flex-col gap-1 pointer-events-none select-none">
         <div className="flex items-center gap-2 text-xs font-bold text-forest-900">
           <Navigation className="w-3.5 h-3.5 text-teal-600 rotate-45" />
           <span>{orderedPlaces.length} Stops</span>
         </div>
         <div className="text-xs text-slate-600 font-semibold font-mono">
-          {activeResult.totalDistanceKm?.toFixed(2)} km total
+          {activeResult.totalDistanceKm?.toFixed(2)} km (straight-line)
         </div>
         {activeResult.improvementPercent > 0 && (
           <div className="text-[10px] font-bold text-teal-700 bg-teal-50 border border-teal-200 rounded-full px-2 py-0.5">
             {activeResult.improvementPercent}% vs baseline
+          </div>
+        )}
+      </div>
+
+      {/* Road routing status / Fallback indicator (Right) */}
+      <div className="absolute top-4 right-4 z-[400] flex flex-col items-end gap-1.5 pointer-events-none select-none max-w-[300px]">
+        {roadLoading && (
+          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-white/95 text-teal-800 border border-teal-200 shadow-soft-sm">
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-600" />
+            <span>Calculating road route...</span>
+          </div>
+        )}
+
+        {roadRoute && !roadLoading && (
+          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-white/95 text-forest-900 border border-teal-200/80 shadow-soft-sm">
+            <Car className="w-3.5 h-3.5 text-teal-600" />
+            <span>
+              OSRM Driving: <strong className="font-mono text-teal-700">{roadRoute.distanceKm} km</strong> ({roadRoute.durationMinutes} min)
+            </span>
+          </div>
+        )}
+
+        {roadError && !roadLoading && (
+          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-amber-50/95 text-amber-900 border border-amber-300 shadow-soft-sm text-right">
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+            <span>Straight-line preview – road routing temporarily unavailable.</span>
           </div>
         )}
       </div>
@@ -140,23 +190,37 @@ export default function RouteMap({ routeResult, algorithm }) {
           maxZoom={19}
         />
 
-        <RouteViewController orderedCoordinates={orderedCoordinates} />
+        <RouteViewController orderedCoordinates={viewCoordinates} />
 
-        {/* Draw each leg as a polyline */}
-        {legs.map((leg, idx) => (
+        {/* Render road geometry or fallback straight-line legs */}
+        {roadPositions ? (
           <Polyline
-            key={`${algorithm}-leg-${idx}`}
-            positions={[leg.fromCoordinates, leg.toCoordinates]}
+            key={`road-${algorithm}-${roadPositions.length}`}
+            positions={roadPositions}
             pathOptions={{
               color: lineColor,
-              weight: idx === 0 ? 5 : 4,
-              opacity: 0.85,
-              dashArray: algorithm === 'baseline' ? '8, 6' : undefined,
+              weight: 5,
+              opacity: 0.9,
               lineCap: 'round',
               lineJoin: 'round',
             }}
           />
-        ))}
+        ) : (
+          legs.map((leg, idx) => (
+            <Polyline
+              key={`${algorithm}-fallback-leg-${idx}`}
+              positions={[leg.fromCoordinates, leg.toCoordinates]}
+              pathOptions={{
+                color: lineColor,
+                weight: idx === 0 ? 5 : 4,
+                opacity: 0.75,
+                dashArray: '8, 6',
+                lineCap: 'round',
+                lineJoin: 'round',
+              }}
+            />
+          ))
+        )}
 
         {/* Render numbered stop markers */}
         {orderedPlaces.map((place, idx) => {

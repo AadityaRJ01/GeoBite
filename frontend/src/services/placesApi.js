@@ -386,5 +386,26 @@ export async function benchmarkRoutes({ scenario, placeIds, startPlaceId, runs =
   return response.data || response;
 }
 
+/**
+ * Fetch real road-network route geometry and estimated travel duration from OSRM via backend.
+ * @param {Object} params
+ * @param {Array<Object>} [params.stops] - Ordered stops with { latitude, longitude }
+ * @param {string[]} [params.placeIds] - Ordered place UUIDs
+ * @returns {Promise<{ distanceKm: number, durationMinutes: number, geometry: Object, provider: string, profile: string }>}
+ */
+export async function fetchRoadRoute({ stops, placeIds } = {}) {
+  const body = {};
+  if (stops && Array.isArray(stops)) body.stops = stops;
+  if (placeIds && Array.isArray(placeIds)) body.placeIds = placeIds;
+
+  const response = await fetchJson('/routes/road-route', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  return response.data || response;
+}
+
 export { API_BASE_URL };
 

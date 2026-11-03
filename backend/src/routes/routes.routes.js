@@ -1,5 +1,9 @@
 import { Router } from 'express';
-import { optimizeRoute, benchmarkRoute } from '../controllers/routes.controller.js';
+import {
+  optimizeRoute,
+  benchmarkRoute,
+  getRoadRouteHandler,
+} from '../controllers/routes.controller.js';
 
 const router = Router();
 
@@ -14,5 +18,11 @@ router.post('/optimize', optimizeRoute);
  * Runs multi-iteration performance benchmarks across routing algorithms.
  */
 router.post('/benchmark', benchmarkRoute);
+
+/**
+ * POST /api/routes/road-route
+ * Fetches real road-network routing geometry and duration from OSRM.
+ */
+router.post('/road-route', getRoadRouteHandler);
 
 export default router;
