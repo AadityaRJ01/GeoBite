@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Compass, Activity, Menu, X, ArrowUpRight, MapPin } from 'lucide-react';
+import { Compass, Activity, Menu, X, ArrowUpRight, MapPin, Route, BarChart2 } from 'lucide-react';
 
 export default function Navbar({ healthStatus }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -48,31 +48,36 @@ export default function Navbar({ healthStatus }) {
           </div>
 
           {/* Desktop Navigation Links */}
-          <nav className="hidden md:flex items-center gap-8">
+          <nav className="hidden md:flex items-center gap-6">
             <Link
               to="/discover"
               className="text-sm font-semibold text-teal-700 hover:text-forest-900 transition-colors flex items-center gap-1.5"
             >
               <MapPin className="w-4 h-4 text-teal-600" />
-              <span>Discover Places</span>
+              <span>Discover</span>
               <span className="px-1.5 py-0.2 text-[9px] rounded-full bg-teal-100 text-teal-800 font-bold">
                 Live API
               </span>
+            </Link>
+            <Link
+              to="/route"
+              className="text-sm font-medium text-slate-600 hover:text-forest-900 transition-colors flex items-center gap-1.5"
+            >
+              <Route className="w-4 h-4 text-teal-600" />
+              <span>Route Planner</span>
+            </Link>
+            <Link
+              to="/benchmark"
+              className="text-sm font-medium text-slate-600 hover:text-forest-900 transition-colors flex items-center gap-1.5"
+            >
+              <BarChart2 className="w-4 h-4 text-teal-600" />
+              <span>Benchmark</span>
             </Link>
             <a
               href="/#categories"
               className="text-sm font-medium text-slate-600 hover:text-forest-900 transition-colors"
             >
               Categories
-            </a>
-            <a
-              href="/#map-preview"
-              className="text-sm font-medium text-slate-600 hover:text-forest-900 transition-colors flex items-center gap-1.5"
-            >
-              Route Engine
-              <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-forest-100 text-forest-800 font-semibold">
-                Preview
-              </span>
             </a>
             <a
               href="/#architecture"
@@ -156,6 +161,20 @@ export default function Navbar({ healthStatus }) {
             className="block px-3 py-2 rounded-lg text-base font-bold text-teal-800 bg-teal-50 hover:bg-teal-100"
           >
             Discover Places (Live API)
+          </Link>
+          <Link
+            to="/route"
+            onClick={() => setMobileMenuOpen(false)}
+            className="block px-3 py-2 rounded-lg text-base font-medium text-slate-800 hover:bg-forest-50"
+          >
+            Route Planner
+          </Link>
+          <Link
+            to="/benchmark"
+            onClick={() => setMobileMenuOpen(false)}
+            className="block px-3 py-2 rounded-lg text-base font-medium text-slate-800 hover:bg-forest-50"
+          >
+            Algorithm Benchmark Dashboard
           </Link>
           <a
             href="/#categories"

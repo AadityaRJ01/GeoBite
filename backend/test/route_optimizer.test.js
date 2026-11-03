@@ -581,6 +581,28 @@ async function runAllTests() {
       typeof benchResSmall.data.data.recommendation.reason === 'string'
     );
 
+    // Verify all remaining individual presets (medium, large, clustered, dispersed)
+    for (const presetKey of ['medium', 'large', 'clustered', 'dispersed']) {
+      const presetRes = await postJson('/api/routes/benchmark', {
+        scenario: presetKey,
+        runs: 1,
+      });
+      assert(`POST /api/routes/benchmark with scenario=${presetKey} returns 200 OK`, presetRes.status === 200);
+      assert(`Scenario ${presetKey} has all three algorithms and non-negative median times`,
+        presetRes.data.data.metrics.baseline.medianTimeMs >= 0 &&
+        presetRes.data.data.metrics.nearestNeighbor.medianTimeMs >= 0 &&
+        presetRes.data.data.metrics.twoOpt.medianTimeMs >= 0
+      );
+      assert(`Scenario ${presetKey} recommendation is consistent with non-worsening invariant`,
+        presetRes.data.data.metrics.twoOpt.distanceKm <= presetRes.data.data.metrics.nearestNeighbor.distanceKm + 1e-4 &&
+        ['nearestNeighbor', 'twoOpt'].includes(presetRes.data.data.recommendation.recommendedAlgorithm)
+      );
+      assert(`Scenario ${presetKey} distance improvement calculation is valid`,
+        typeof presetRes.data.data.metrics.nearestNeighbor.improvementPercent === 'number' &&
+        typeof presetRes.data.data.metrics.twoOpt.improvementPercent === 'number'
+      );
+    }
+
     // Preset scenario 'all'
     const benchResAll = await postJson('/api/routes/benchmark', {
       scenario: 'all',
