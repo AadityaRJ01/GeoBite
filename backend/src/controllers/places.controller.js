@@ -1,13 +1,15 @@
 import { Prisma } from '@prisma/client';
 import prisma from '../lib/prisma.js';
+import { searchLocation } from '../services/geocoding.service.js';
+import { discoverPlacesForCity } from '../services/placeDiscovery.service.js';
 
 /**
  * GET /api/places
- * Returns all active places, with optional ?category= and ?query= filtering.
+ * Returns all active places, with optional ?category=, ?query=, and ?city= filtering.
  */
 export const getPlaces = async (req, res, next) => {
   try {
-    const { category, query, q } = req.query;
+    const { category, query, q, city } = req.query;
 
     const validCategories = ['restaurant', 'cafe', 'viewpoint', 'attraction'];
 
@@ -27,15 +29,31 @@ export const getPlaces = async (req, res, next) => {
       where.category = category;
     }
 
+    // Optional city filter to isolate places belonging to a specific city
+    if (city && String(city).trim() !== '') {
+      const cityTerm = String(city).trim();
+      where.OR = [
+        { cityName: { equals: cityTerm, mode: 'insensitive' } },
+        { address: { contains: cityTerm, mode: 'insensitive' } },
+      ];
+    }
+
     // Optional text keyword search across name, description, address
     const rawSearch = query || q;
     if (rawSearch !== undefined && rawSearch !== null && String(rawSearch).trim() !== '') {
       const term = String(rawSearch).trim();
-      where.OR = [
+      const textConditions = [
         { name: { contains: term, mode: 'insensitive' } },
         { description: { contains: term, mode: 'insensitive' } },
         { address: { contains: term, mode: 'insensitive' } },
       ];
+
+      if (where.OR) {
+        where.AND = [{ OR: where.OR }, { OR: textConditions }];
+        delete where.OR;
+      } else {
+        where.OR = textConditions;
+      }
     }
 
     const places = await prisma.place.findMany({
@@ -55,6 +73,10 @@ export const getPlaces = async (req, res, next) => {
         isActive: true,
         createdAt: true,
         updatedAt: true,
+        cityName: true,
+        externalId: true,
+        source: true,
+        lastSyncedAt: true,
         // location (PostGIS geography) is excluded — Prisma cannot serialize it
       },
     });
@@ -66,6 +88,103 @@ export const getPlaces = async (req, res, next) => {
     });
   } catch (error) {
     next(error);
+  }
+};
+
+/**
+ * POST /api/places/discover-city
+ * Resolves a global city, fetches authentic places from OSM Overpass if needed,
+ * persists them in PostgreSQL, and returns city metadata and places.
+ */
+export const discoverCity = async (req, res, next) => {
+  try {
+    const { city, lat, lng, refresh } = req.body || {};
+
+    if (!city || typeof city !== 'string' || !city.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'Field "city" is required and must be a non-empty string.',
+          statusCode: 400,
+        },
+      });
+    }
+
+    const trimmedCity = city.trim();
+
+    // 1. Resolve city metadata and authoritative coordinates via Geocoding service
+    let resolvedLocation;
+    try {
+      resolvedLocation = await searchLocation(trimmedCity);
+    } catch (geoErr) {
+      // If geocoding failed, but client passed valid coordinates, construct fallback
+      const parsedLat = parseFloat(lat);
+      const parsedLng = parseFloat(lng);
+      if (
+        !isNaN(parsedLat) &&
+        !isNaN(parsedLng) &&
+        parsedLat >= -90 &&
+        parsedLat <= 90 &&
+        parsedLng >= -180 &&
+        parsedLng <= 180
+      ) {
+        resolvedLocation = {
+          query: trimmedCity,
+          displayName: trimmedCity,
+          cityName: trimmedCity,
+          country: '',
+          lat: parsedLat,
+          lng: parsedLng,
+          boundingBox: null,
+        };
+      } else {
+        return res.status(geoErr.statusCode || 502).json({
+          success: false,
+          error: {
+            message: geoErr.message || `Unable to resolve location for city "${trimmedCity}".`,
+            statusCode: geoErr.statusCode || 502,
+          },
+        });
+      }
+    }
+
+    // 2. Discover and persist places for this city
+    let places = [];
+    try {
+      places = await discoverPlacesForCity({
+        cityName: resolvedLocation.cityName,
+        lat: resolvedLocation.lat,
+        lng: resolvedLocation.lng,
+        country: resolvedLocation.country,
+        refresh: Boolean(refresh),
+      });
+    } catch (discoveryErr) {
+      return res.status(502).json({
+        success: false,
+        error: {
+          message: discoveryErr.message || `Unable to discover places for "${trimmedCity}".`,
+          statusCode: 502,
+        },
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        city: {
+          name: resolvedLocation.cityName,
+          displayName: resolvedLocation.displayName,
+          lat: resolvedLocation.lat,
+          lng: resolvedLocation.lng,
+          country: resolvedLocation.country,
+          boundingBox: resolvedLocation.boundingBox,
+        },
+        count: places.length,
+        places,
+      },
+    });
+  } catch (err) {
+    next(err);
   }
 };
 
@@ -419,6 +538,10 @@ export const getNearbyPlaces = async (req, res, next) => {
         "isActive",
         "createdAt",
         "updatedAt",
+        "cityName",
+        "externalId",
+        "source",
+        "lastSyncedAt",
         ROUND(ST_Distance(
           location,
           ST_SetSRID(ST_MakePoint(${parsedLng}, ${parsedLat}), 4326)::geography
@@ -677,7 +800,11 @@ export const getPlacesWithinBounds = async (req, res, next) => {
         "estimatedVisitMinutes",
         "isActive",
         "createdAt",
-        "updatedAt"
+        "updatedAt",
+        "cityName",
+        "externalId",
+        "source",
+        "lastSyncedAt"
       FROM places
       WHERE "isActive" = true
         AND ST_Within(

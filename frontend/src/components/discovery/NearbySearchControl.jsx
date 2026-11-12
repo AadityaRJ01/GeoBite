@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Navigation, 
   Crosshair, 
@@ -40,6 +40,19 @@ export default function NearbySearchControl({
   const [geoLoading, setGeoLoading] = useState(false);
   const [geoNotice, setGeoNotice] = useState(null); // { type: 'error' | 'success' | 'info', message: string }
   const [validationError, setValidationError] = useState('');
+
+  // Keep input fields synchronized whenever parent activeParams update
+  useEffect(() => {
+    if (activeParams?.lat !== undefined && activeParams.lat !== null) {
+      setLatInput(String(activeParams.lat));
+    }
+    if (activeParams?.lng !== undefined && activeParams.lng !== null) {
+      setLngInput(String(activeParams.lng));
+    }
+    if (activeParams?.radius !== undefined && activeParams.radius !== null) {
+      setRadius(activeParams.radius);
+    }
+  }, [activeParams?.lat, activeParams?.lng, activeParams?.radius]);
 
   // Use browser geolocation
   const handleUseMyLocation = () => {
@@ -201,6 +214,9 @@ export default function NearbySearchControl({
                 <span className="font-extrabold text-teal-950">{activeParams.radius} km</span> of center (
                 <span className="font-mono">{Number(activeParams.lat).toFixed(4)}°</span>,{' '}
                 <span className="font-mono">{Number(activeParams.lng).toFixed(4)}°</span>)
+                {activeParams.cityName && (
+                  <span className="font-semibold text-teal-950"> [{activeParams.cityName}]</span>
+                )}
                 {activeParams.category && (
                   <span>
                     {' '}• Category: <strong className="capitalize">{activeParams.category}</strong>

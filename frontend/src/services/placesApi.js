@@ -85,15 +85,23 @@ async function fetchJson(endpoint, options = {}) {
 }
 
 /**
- * Fetch all active places, with optional category filtering
+ * Fetch all active places, with optional category and city filtering
  * @param {Object} [params] - Query parameters
  * @param {string} [params.category] - Filter by category ('restaurant' | 'cafe' | 'viewpoint' | 'attraction')
+ * @param {string} [params.city] - Filter by city name
+ * @param {string} [params.query] - Text search query
  * @returns {Promise<{ places: Array, count: number }>}
  */
 export async function fetchPlaces(params = {}) {
   const query = new URLSearchParams();
   if (params.category && params.category !== 'all') {
     query.set('category', params.category);
+  }
+  if (params.city && params.city !== 'all') {
+    query.set('city', params.city);
+  }
+  if (params.query) {
+    query.set('query', params.query);
   }
 
   const queryString = query.toString();
@@ -172,6 +180,9 @@ export async function fetchNearbyPlaces(params = {}) {
 
   if (radius !== undefined && radius !== null) {
     query.set('radius', String(radius));
+  }
+  if (params.city && params.city !== 'all') {
+    query.set('city', params.city);
   }
   if (category && category !== 'all') {
     query.set('category', category);
@@ -399,6 +410,46 @@ export async function fetchRoadRoute({ stops, placeIds } = {}) {
   if (placeIds && Array.isArray(placeIds)) body.placeIds = placeIds;
 
   const response = await fetchJson('/routes/road-route', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  return response.data || response;
+}
+
+/**
+ * Search for a location/city using backend OSM Nominatim geocoding service.
+ * @param {string} query - City or location name
+ * @returns {Promise<{ query: string, displayName: string, cityName: string, country: string, lat: number, lng: number, boundingBox: Object }>}
+ */
+export async function searchLocation(query) {
+  if (!query || typeof query !== 'string' || !query.trim()) {
+    throw new ApiError('Query string is required to search location.', 400);
+  }
+  const response = await fetchJson(`/locations/search?q=${encodeURIComponent(query.trim())}`);
+  return response.data || response;
+}
+
+/**
+ * Discover real places for a city using backend OpenStreetMap Overpass integration.
+ * @param {Object} params
+ * @param {string} params.city - City name
+ * @param {number} [params.lat] - Optional latitude
+ * @param {number} [params.lng] - Optional longitude
+ * @param {boolean} [params.refresh] - Force refresh from Overpass API
+ * @returns {Promise<{ city: Object, count: number, places: Array }>}
+ */
+export async function discoverCity({ city, lat, lng, refresh = false } = {}) {
+  if (!city || typeof city !== 'string' || !city.trim()) {
+    throw new ApiError('City name is required for city discovery.', 400);
+  }
+
+  const body = { city: city.trim(), refresh };
+  if (typeof lat === 'number' && !isNaN(lat)) body.lat = lat;
+  if (typeof lng === 'number' && !isNaN(lng)) body.lng = lng;
+
+  const response = await fetchJson('/places/discover-city', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),

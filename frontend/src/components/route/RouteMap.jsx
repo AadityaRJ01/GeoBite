@@ -52,13 +52,18 @@ function createStopIcon(index, isStart, isHighlighted) {
 }
 
 /**
- * Fits map to route bounds whenever orderedCoordinates changes
+ * Fits map to route bounds or centers on current city
  */
-function RouteViewController({ orderedCoordinates }) {
+function RouteViewController({ orderedCoordinates, center }) {
   const map = useMap();
 
   useEffect(() => {
-    if (!orderedCoordinates || orderedCoordinates.length === 0) return;
+    if (!orderedCoordinates || orderedCoordinates.length === 0) {
+      if (center && typeof center[0] === 'number' && typeof center[1] === 'number') {
+        map.setView(center, 12, { animate: true });
+      }
+      return;
+    }
     const valid = orderedCoordinates.filter(
       ([lat, lng]) => typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng)
     );
@@ -66,7 +71,7 @@ function RouteViewController({ orderedCoordinates }) {
 
     const bounds = L.latLngBounds(valid);
     map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15, animate: true, duration: 0.8 });
-  }, [orderedCoordinates, map]);
+  }, [orderedCoordinates, center, map]);
 
   return null;
 }
@@ -77,6 +82,7 @@ export default function RouteMap({
   roadRoute = null,
   roadLoading = false,
   roadError = null,
+  center = null,
 }) {
   const markerRefs = useRef({});
 
@@ -123,8 +129,9 @@ export default function RouteMap({
   // Initial center for map
   const initialCenter = useMemo(() => {
     if (viewCoordinates.length > 0) return viewCoordinates[0];
+    if (center && Array.isArray(center) && center.length === 2) return center;
     return DEFAULT_CENTER;
-  }, [viewCoordinates]);
+  }, [viewCoordinates, center]);
 
   if (!activeResult) {
     return (
@@ -135,45 +142,45 @@ export default function RouteMap({
   }
 
   return (
-    <div className="relative w-full h-[420px] lg:h-[480px] rounded-3xl overflow-hidden border border-forest-200/90 shadow-soft-md bg-sand-100">
+    <div className="relative w-full h-[340px] sm:h-[420px] lg:h-[480px] rounded-3xl overflow-hidden border border-forest-200/90 shadow-soft-md bg-sand-100">
       {/* Optimization Haversine Stats overlay (Left) */}
-      <div className="absolute top-4 left-4 z-[400] bg-white/93 backdrop-blur-md px-3.5 py-2 rounded-2xl border border-forest-100 shadow-soft-sm flex flex-col gap-1 pointer-events-none select-none">
-        <div className="flex items-center gap-2 text-xs font-bold text-forest-900">
-          <Navigation className="w-3.5 h-3.5 text-teal-600 rotate-45" />
+      <div className="absolute top-3 left-3 sm:top-4 sm:left-4 z-[400] bg-white/95 backdrop-blur-md px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-2xl border border-forest-100 shadow-soft-sm flex flex-col gap-0.5 sm:gap-1 pointer-events-none select-none max-w-[160px] sm:max-w-none">
+        <div className="flex items-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs font-bold text-forest-900">
+          <Navigation className="w-3 sm:w-3.5 h-3 sm:h-3.5 text-teal-600 rotate-45" />
           <span>{orderedPlaces.length} Stops</span>
         </div>
-        <div className="text-xs text-slate-600 font-semibold font-mono">
-          {activeResult.totalDistanceKm?.toFixed(2)} km (straight-line)
+        <div className="text-[11px] sm:text-xs text-slate-600 font-semibold font-mono">
+          {activeResult.totalDistanceKm?.toFixed(2)} km (straight)
         </div>
         {activeResult.improvementPercent > 0 && (
-          <div className="text-[10px] font-bold text-teal-700 bg-teal-50 border border-teal-200 rounded-full px-2 py-0.5">
-            {activeResult.improvementPercent}% vs baseline
+          <div className="text-[9px] sm:text-[10px] font-bold text-teal-700 bg-teal-50 border border-teal-200 rounded-full px-2 py-0.5 w-fit">
+            {activeResult.improvementPercent}% vs base
           </div>
         )}
       </div>
 
       {/* Road routing status / Fallback indicator (Right) */}
-      <div className="absolute top-4 right-4 z-[400] flex flex-col items-end gap-1.5 pointer-events-none select-none max-w-[300px]">
+      <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-[400] flex flex-col items-end gap-1.5 pointer-events-none select-none max-w-[180px] sm:max-w-[300px]">
         {roadLoading && (
-          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-white/95 text-teal-800 border border-teal-200 shadow-soft-sm">
-            <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-600" />
+          <div className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full text-[10px] sm:text-xs font-semibold bg-white/95 text-teal-800 border border-teal-200 shadow-soft-sm">
+            <Loader2 className="w-3 sm:w-3.5 h-3 sm:h-3.5 animate-spin text-teal-600" />
             <span>Calculating road route...</span>
           </div>
         )}
 
         {roadRoute && !roadLoading && (
-          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-white/95 text-forest-900 border border-teal-200/80 shadow-soft-sm">
-            <Car className="w-3.5 h-3.5 text-teal-600" />
+          <div className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full text-[10px] sm:text-xs font-semibold bg-white/95 text-forest-900 border border-teal-200/80 shadow-soft-sm text-right">
+            <Car className="w-3 sm:w-3.5 h-3 sm:h-3.5 text-teal-600 shrink-0" />
             <span>
-              OSRM Driving: <strong className="font-mono text-teal-700">{roadRoute.distanceKm} km</strong> ({roadRoute.durationMinutes} min)
+              OSRM: <strong className="font-mono text-teal-700">{roadRoute.distanceKm} km</strong> ({roadRoute.durationMinutes}m)
             </span>
           </div>
         )}
 
         {roadError && !roadLoading && (
-          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-amber-50/95 text-amber-900 border border-amber-300 shadow-soft-sm text-right">
-            <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-            <span>Straight-line preview – road routing temporarily unavailable.</span>
+          <div className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-[10px] sm:text-xs font-medium bg-amber-50/95 text-amber-900 border border-amber-300 shadow-soft-sm text-right">
+            <AlertTriangle className="w-3 sm:w-3.5 h-3 sm:h-3.5 text-amber-600 shrink-0" />
+            <span>Straight-line preview</span>
           </div>
         )}
       </div>

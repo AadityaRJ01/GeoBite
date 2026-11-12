@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, MapPin, Navigation, Sparkles, SlidersHorizontal, ShieldCheck, Zap } from 'lucide-react';
+import { geocodeCity } from '../services/geocoding';
 
 const POPULAR_DESTINATIONS = [
   { name: 'Bengaluru, India', coords: '12.9716° N, 77.5946° E', count: '18 verified spots' },
@@ -11,32 +12,89 @@ const POPULAR_DESTINATIONS = [
 
 export default function HeroSection({ onSearch, activeCity, setActiveCity }) {
   const navigate = useNavigate();
-  const [searchInput, setSearchInput] = useState('');
+  const [searchInput, setSearchInput] = useState(activeCity || 'Bengaluru, India');
   const [selectedRadius, setSelectedRadius] = useState('5 km');
   const [isLocating, setIsLocating] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
 
+  // Sync local searchInput if activeCity changes from parent or presets
+  useEffect(() => {
+    if (activeCity) {
+      setSearchInput(activeCity);
+    }
+  }, [activeCity]);
+
+  // Quick select city button handler: updates active city without premature navigation
   const handleSelectCity = (city) => {
-    setActiveCity(city.name);
+    if (setActiveCity) setActiveCity(city.name);
     setSearchInput(city.name);
     if (onSearch) onSearch(city.name, selectedRadius);
-    navigate('/discover');
   };
 
-  const handleSearchSubmit = (e) => {
-    e.preventDefault();
-    const query = searchInput.trim() || activeCity;
-    setActiveCity(query);
-    if (onSearch) onSearch(query, selectedRadius);
-    navigate('/discover');
+  // Discover Now submission handler: geocodes query & passes full spatial context to Discovery page
+  const handleSearchSubmit = async (e) => {
+    if (e) e.preventDefault();
+    const query = searchInput.trim() || activeCity || 'Bengaluru, India';
+    setIsSearching(true);
+
+    try {
+      const resolved = await geocodeCity(query);
+      if (setActiveCity) setActiveCity(resolved.name);
+      setSearchInput(resolved.name);
+      if (onSearch) onSearch(resolved.name, selectedRadius);
+
+      const radiusKm = parseInt(selectedRadius, 10) || 5;
+      const searchParams = new URLSearchParams({
+        lat: resolved.lat.toString(),
+        lng: resolved.lng.toString(),
+        city: resolved.name,
+        radius: radiusKm.toString(),
+      });
+
+      navigate(`/discover?${searchParams.toString()}`, {
+        state: {
+          lat: resolved.lat,
+          lng: resolved.lng,
+          city: resolved.name,
+          radius: radiusKm,
+        },
+      });
+    } catch (err) {
+      console.error('Error resolving city coordinates for discovery:', err);
+      // Resilient fallback with whatever is in query
+      navigate(`/discover?city=${encodeURIComponent(query)}`, {
+        state: { city: query },
+      });
+    } finally {
+      setIsSearching(false);
+    }
   };
 
   const handleCurrentLocation = () => {
-    setIsLocating(true);
-    setTimeout(() => {
-      setIsLocating(false);
-      setActiveCity('Current Location (Detected: Silicon Valley)');
-      setSearchInput('Current Location (Detected: Silicon Valley)');
-    }, 600);
+    if (navigator.geolocation) {
+      setIsLocating(true);
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setIsLocating(false);
+          const lat = Number(position.coords.latitude.toFixed(4));
+          const lng = Number(position.coords.longitude.toFixed(4));
+          const coordString = `${lat}, ${lng}`;
+          if (setActiveCity) setActiveCity(coordString);
+          setSearchInput(coordString);
+          if (onSearch) onSearch(coordString, selectedRadius);
+        },
+        () => {
+          setIsLocating(false);
+          // Graceful fallback to default Bengaluru
+          if (setActiveCity) setActiveCity('Bengaluru, India');
+          setSearchInput('Bengaluru, India');
+        },
+        { timeout: 8000 }
+      );
+    } else {
+      if (setActiveCity) setActiveCity('Bengaluru, India');
+      setSearchInput('Bengaluru, India');
+    }
   };
 
   return (
@@ -112,10 +170,11 @@ export default function HeroSection({ onSearch, activeCity, setActiveCity }) {
                 {/* Submit Button */}
                 <button
                   type="submit"
-                  className="px-6 py-3.5 rounded-2xl bg-forest-900 hover:bg-forest-800 active:scale-95 text-white font-semibold text-sm sm:text-base flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all duration-200"
+                  disabled={isSearching}
+                  className="px-6 py-3.5 rounded-2xl bg-forest-900 hover:bg-forest-800 active:scale-95 text-white font-semibold text-sm sm:text-base flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all duration-200 disabled:opacity-70 cursor-pointer"
                 >
-                  <Search className="w-4 h-4 text-teal-400" />
-                  <span>Discover Now</span>
+                  <Search className={`w-4 h-4 text-teal-400 ${isSearching ? 'animate-spin' : ''}`} />
+                  <span>{isSearching ? 'Resolving...' : 'Discover Now'}</span>
                 </button>
               </div>
 

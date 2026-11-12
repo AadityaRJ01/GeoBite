@@ -1,5 +1,6 @@
 import React from 'react';
-import { Compass, ArrowUp } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Compass, ArrowUp, MapPin, Route, BarChart2 } from 'lucide-react';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -23,69 +24,71 @@ export default function Footer() {
               </span>
             </div>
             <p className="text-sm text-forest-300 max-w-sm leading-relaxed">
-              Production-quality geospatial local discovery and route optimization platform. Engineered for seamless multi-stop explorations, local flavors, and panoramic scenic horizons.
+              Production-quality geospatial discovery, TSP route optimization, and real road-routing platform. Engineered for seamless multi-stop journeys, local flavors, and scenic horizons.
             </p>
-            <div className="flex items-center gap-2 pt-2">
+            <div className="flex flex-wrap items-center gap-2 pt-2">
               <span className="px-2.5 py-1 rounded-md text-[11px] font-mono font-medium bg-forest-900 text-teal-300 border border-forest-800">
-                Day 1 • Foundation Setup
+                Full-Stack Architecture
               </span>
               <span className="px-2.5 py-1 rounded-md text-[11px] font-mono font-medium bg-forest-900 text-forest-300 border border-forest-800">
-                Port 5000 (API) : 5173 (Web)
+                Express :5000 | Vite :5173
               </span>
             </div>
           </div>
 
-          {/* Quick links */}
+          {/* Platform Navigation */}
           <div>
             <h4 className="text-white font-bold text-sm tracking-wider uppercase mb-4">
               Platform
             </h4>
             <ul className="space-y-2.5 text-sm text-forest-300">
               <li>
-                <a href="#hero" className="hover:text-teal-400 transition-colors">
-                  Local Discovery
-                </a>
+                <Link to="/discover" className="hover:text-teal-400 transition-colors flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-teal-500" />
+                  <span>Discover Places</span>
+                </Link>
               </li>
               <li>
-                <a href="#categories" className="hover:text-teal-400 transition-colors">
-                  Category Filters
-                </a>
+                <Link to="/route" className="hover:text-teal-400 transition-colors flex items-center gap-1.5">
+                  <Route className="w-3.5 h-3.5 text-teal-500" />
+                  <span>Route Planner</span>
+                </Link>
               </li>
               <li>
-                <a href="#map-preview" className="hover:text-teal-400 transition-colors flex items-center gap-1.5">
-                  <span>Route Optimizer</span>
-                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-forest-800 text-teal-300">Preview</span>
-                </a>
+                <Link to="/benchmark" className="hover:text-teal-400 transition-colors flex items-center gap-1.5">
+                  <BarChart2 className="w-3.5 h-3.5 text-teal-500" />
+                  <span>Algorithm Benchmark</span>
+                </Link>
               </li>
               <li>
-                <a href="#architecture" className="hover:text-teal-400 transition-colors">
+                <a href="/#architecture" className="hover:text-teal-400 transition-colors">
                   System Architecture
                 </a>
               </li>
             </ul>
           </div>
 
-          {/* Planned Days */}
+          {/* Engine Highlights */}
           <div>
             <h4 className="text-white font-bold text-sm tracking-wider uppercase mb-4">
-              Roadmap
+              Engines
             </h4>
             <ul className="space-y-2.5 text-sm text-forest-300">
               <li className="text-teal-400 flex items-center gap-1.5 font-medium">
                 <span className="w-1.5 h-1.5 rounded-full bg-teal-400" />
-                <span>Day 1: Foundation (Done)</span>
+                <span>PostGIS Spatial Search</span>
               </li>
-              <li className="text-forest-400 flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-forest-600" />
-                <span>Day 2: Geospatial & Tiles</span>
+              <li className="text-forest-300 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-teal-500/60" />
+                <span>Nearest Neighbor + 2-opt</span>
               </li>
-              <li className="text-forest-400 flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-forest-600" />
-                <span>Day 3: TSP Route Planner</span>
+              <li className="text-forest-300 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-teal-500/60" />
+                <span>OSRM Road Routing</span>
               </li>
-              <li className="text-forest-400 flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-forest-600" />
-                <span>Day 4: Performance & Benchmarks</span>
+              <li className="text-forest-300 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-teal-500/60" />
+                <span>Multi-Dataset Suite</span>
               </li>
             </ul>
           </div>
@@ -96,7 +99,17 @@ export default function Footer() {
               Tech Stack
             </h4>
             <div className="flex flex-wrap gap-1.5 text-xs">
-              {['React 19', 'Vite 8', 'Tailwind CSS', 'Node.js', 'Express', 'ES Modules', 'CORS', 'Lucide Icons'].map((tech) => (
+              {[
+                'React 19',
+                'Tailwind CSS',
+                'Leaflet',
+                'PostgreSQL 17',
+                'PostGIS 3.6',
+                'Prisma ORM',
+                'OSRM API',
+                'Node.js',
+                'Express',
+              ].map((tech) => (
                 <span
                   key={tech}
                   className="px-2 py-1 rounded bg-forest-900/90 text-forest-300 border border-forest-800 text-[11px]"
@@ -111,12 +124,12 @@ export default function Footer() {
         {/* Bottom Bar */}
         <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-forest-400">
           <p className="flex items-center gap-1">
-            <span>© {CURRENT_YEAR} GeoBite. Engineered for Engineering Placement Excellence.</span>
+            <span>© {CURRENT_YEAR} GeoBite. Geospatial Discovery & Route Optimization Platform.</span>
           </p>
           <div className="flex items-center gap-4">
             <button
               onClick={scrollToTop}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-forest-900 hover:bg-forest-850 text-forest-200 hover:text-white transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-forest-900 hover:bg-forest-850 text-forest-200 hover:text-white transition-colors cursor-pointer"
             >
               <span>Back to top</span>
               <ArrowUp className="w-3.5 h-3.5 text-teal-400" />

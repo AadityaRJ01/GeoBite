@@ -29,6 +29,11 @@ model Place {
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
 
+  cityName              String?
+  externalId            String?       @unique
+  source                String        @default("seed")
+  lastSyncedAt          DateTime?
+
   // Spatial PostGIS column for efficient geospatial distance and polygon operations
   // Note: Prisma treats Unsupported columns as ignored during standard model queries
   location              Unsupported("geography(Point, 4326)")?
@@ -36,6 +41,8 @@ model Place {
   @@index([category])
   @@index([isActive])
   @@index([latitude, longitude])
+  @@index([cityName])
+  @@index([source])
   @@unique([name, address])
   @@map("places")
 }

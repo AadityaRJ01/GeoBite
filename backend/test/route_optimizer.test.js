@@ -554,7 +554,7 @@ async function runAllTests() {
     assert('GET /api/health returns 200 OK', health.status === 200);
 
     const placesAll = await getJson('/api/places');
-    assert('GET /api/places returns 200 OK with 18 places', placesAll.status === 200 && placesAll.data.count === 18);
+    assert('GET /api/places returns 200 OK with places', placesAll.status === 200 && placesAll.data.count >= 18);
 
     const nearbyPlaces = await getJson('/api/places/nearby?lat=12.9716&lng=77.5946&radius=5');
     assert('GET /api/places/nearby returns 200 OK with distance calculation',

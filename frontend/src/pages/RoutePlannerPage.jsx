@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import {
   Compass,
   ArrowLeft,
@@ -28,8 +28,9 @@ import {
   X,
   Car,
 } from 'lucide-react';
-import { fetchPlaces, optimizeRoute, benchmarkRoutes, fetchRoadRoute } from '../services/placesApi';
+import { fetchPlaces, optimizeRoute, benchmarkRoutes, fetchRoadRoute, fetchHealth, discoverCity } from '../services/placesApi';
 import RouteMap from '../components/route/RouteMap';
+import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -412,10 +413,29 @@ function LegTable({ legs }) {
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function RoutePlannerPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+
+  const urlCity = searchParams.get('city') || location.state?.city || 'Bengaluru';
+  const [currentCity, setCurrentCity] = useState(urlCity);
+  const [discoveringCity, setDiscoveringCity] = useState(false);
+
   // All available places
   const [allPlaces, setAllPlaces] = useState([]);
   const [loadingPlaces, setLoadingPlaces] = useState(true);
   const [placesError, setPlacesError] = useState(null);
+
+  // Sync city state when URL searchParams or location state change
+  useEffect(() => {
+    const qCity = searchParams.get('city') || location.state?.city;
+    if (qCity && qCity !== currentCity) {
+      setCurrentCity(qCity);
+      setSelectedIds([]);
+      setStartPlaceId(null);
+      setRouteResult(null);
+      setRoadRoute(null);
+    }
+  }, [searchParams, location.state]);
 
   // User itinerary selection
   const [selectedIds, setSelectedIds] = useState([]);
@@ -438,25 +458,76 @@ export default function RoutePlannerPage() {
   // Sidebar tab (place picker vs. selected stops)
   const [sidebarTab, setSidebarTab] = useState('pick'); // 'pick' | 'stops'
 
-  // Load all places on mount
+  // Mobile layout tab (planner picker vs map results)
+  const [mobilePlannerTab, setMobilePlannerTab] = useState('planner'); // 'planner' | 'results'
+
+  // Backend Health Status
+  const [healthStatus, setHealthStatus] = useState({ online: false, data: null });
+
+  // Load backend health on mount
+  useEffect(() => {
+    let mounted = true;
+    fetchHealth()
+      .then((data) => {
+        if (mounted) setHealthStatus({ online: true, data });
+      })
+      .catch(() => {
+        if (mounted) setHealthStatus({ online: false, data: null });
+      });
+    return () => { mounted = false; };
+  }, []);
+
+  // Load places for the current city
   useEffect(() => {
     let mounted = true;
     setLoadingPlaces(true);
-    fetchPlaces()
-      .then((data) => {
+    setPlacesError(null);
+
+    const loadPlaces = async () => {
+      try {
+        let data = await fetchPlaces({ city: currentCity });
+        let cityPlaces = data.places || [];
+
+        // If no places exist yet for this city, automatically discover from Overpass API
+        if (cityPlaces.length === 0 && currentCity) {
+          if (mounted) setDiscoveringCity(true);
+          try {
+            await discoverCity({ city: currentCity });
+            data = await fetchPlaces({ city: currentCity });
+            cityPlaces = data.places || [];
+          } catch (discErr) {
+            console.warn('Auto city discovery in route planner:', discErr);
+          } finally {
+            if (mounted) setDiscoveringCity(false);
+          }
+        }
+
         if (mounted) {
-          setAllPlaces(data.places || []);
+          setAllPlaces(cityPlaces);
           setLoadingPlaces(false);
         }
-      })
-      .catch((err) => {
+      } catch (err) {
         if (mounted) {
           setPlacesError(err.message || 'Failed to load places.');
           setLoadingPlaces(false);
         }
-      });
+      }
+    };
+
+    loadPlaces();
     return () => { mounted = false; };
-  }, []);
+  }, [currentCity]);
+
+  // Derived: city center coordinates for map view
+  const cityCenter = useMemo(() => {
+    if (allPlaces && allPlaces.length > 0) {
+      const valid = allPlaces.filter((p) => p.hasValidCoordinates);
+      if (valid.length > 0) {
+        return [valid[0].latitude, valid[0].longitude];
+      }
+    }
+    return null;
+  }, [allPlaces]);
 
   // Derived: selected place objects in selection order
   const selectedPlaces = useMemo(() => {
@@ -514,6 +585,7 @@ export default function RoutePlannerPage() {
       setRouteResult(result);
       setActiveAlgo(result.recommended || 'twoOpt');
       setSidebarTab('stops');
+      setMobilePlannerTab('results');
     } catch (err) {
       setOptimizeError(err.message || 'Route optimization failed.');
     } finally {
@@ -596,75 +668,41 @@ export default function RoutePlannerPage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-sand-50 selection:bg-teal-500 selection:text-white">
-      {/* ── Header ──────────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-forest-100 shadow-soft-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16 sm:h-20">
-            <div className="flex items-center gap-4">
-              <Link
-                to="/discover"
-                className="inline-flex items-center gap-2 p-2 rounded-xl text-forest-700 hover:text-forest-900 hover:bg-forest-50 transition-colors"
-                title="Back to Discovery"
-              >
-                <ArrowLeft className="w-5 h-5" />
-                <span className="text-xs font-semibold hidden sm:inline">Discover</span>
-              </Link>
+      {/* ── Top Header Navigation ──────────────────────────────────── */}
+      <Navbar
+        healthStatus={healthStatus}
+        pageTag="Route Planner"
+        extraActions={
+          <>
+            {selectedIds.length > 0 && (
+              <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-50 border border-teal-200 text-teal-800 text-xs font-bold shadow-soft-sm">
+                <Route className="w-3.5 h-3.5 text-teal-600" />
+                <span>{selectedIds.length} / 10 stops</span>
+              </div>
+            )}
 
-              <Link to="/" className="flex items-center gap-2.5 group">
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-forest-900 to-forest-800 flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform duration-200 border border-teal-500/30">
-                  <Compass className="w-4.5 h-4.5 text-teal-400 group-hover:rotate-45 transition-transform duration-500" />
-                </div>
-                <div className="flex flex-col">
-                  <span className="font-extrabold text-xl tracking-tight text-forest-950">
-                    Geo<span className="text-teal-600">Bite</span>
-                    <span className="ml-1.5 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-teal-50 text-teal-700 border border-teal-200/60 rounded">
-                      Route Planner
-                    </span>
-                  </span>
-                </div>
-              </Link>
-            </div>
-
-            {/* Header Right */}
-            <div className="flex items-center gap-3">
-              {selectedIds.length > 0 && (
-                <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-50 border border-teal-200 text-teal-800 text-xs font-bold">
-                  <Route className="w-3.5 h-3.5" />
-                  <span>{selectedIds.length} / 10 stops</span>
-                </div>
+            <button
+              type="button"
+              onClick={handleOptimize}
+              disabled={!canOptimize || optimizing}
+              className={`inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 shadow-soft-sm ${
+                canOptimize && !optimizing
+                  ? 'bg-gradient-to-r from-teal-600 to-teal-500 text-white hover:from-teal-500 hover:to-teal-400 hover:shadow-soft-md active:scale-95 cursor-pointer'
+                  : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200/80'
+              }`}
+              title={!canOptimize ? 'Select 2-10 stops to optimize' : 'Compute optimized multi-stop route'}
+            >
+              {optimizing ? (
+                <RefreshCw className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" />
+              ) : (
+                <Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
               )}
-
-              <Link
-                to="/benchmark"
-                className="hidden md:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-forest-900 bg-sand-100 hover:bg-sand-200 transition-colors"
-                title="Open Algorithm Benchmark Dashboard"
-              >
-                <BarChart2 className="w-3.5 h-3.5 text-teal-600" />
-                <span>Benchmark</span>
-              </Link>
-
-              <button
-                type="button"
-                onClick={handleOptimize}
-                disabled={!canOptimize || optimizing}
-                className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all duration-200 shadow-sm ${
-                  canOptimize && !optimizing
-                    ? 'bg-gradient-to-r from-teal-600 to-teal-500 text-white hover:from-teal-500 hover:to-teal-400 hover:shadow-md active:scale-95'
-                    : 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                }`}
-              >
-                {optimizing ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Zap className="w-4 h-4" />
-                )}
-                <span className="hidden sm:inline">{optimizing ? 'Optimizing…' : 'Optimize Route'}</span>
-                <span className="sm:hidden">{optimizing ? '…' : 'Run'}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
+              <span className="hidden sm:inline">{optimizing ? 'Optimizing…' : 'Optimize Route'}</span>
+              <span className="sm:hidden">{optimizing ? '…' : 'Run'}</span>
+            </button>
+          </>
+        }
+      />
 
       {/* ── Main Content ─────────────────────────────────────────────── */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
@@ -675,11 +713,52 @@ export default function RoutePlannerPage() {
             <span>Multi-Stop Route Optimization</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-forest-950 tracking-tight">
-            Plan Your Bengaluru Itinerary
+            Plan Your {currentCity} Itinerary
           </h1>
           <p className="text-sm text-slate-600 mt-1 max-w-2xl">
-            Select 2–10 places, optionally pin a starting stop, then compare Baseline, Nearest Neighbor, and 2-opt optimized routes side-by-side.
+            Select 2–10 places in {currentCity}, optionally pin a starting stop, then compare Baseline, Nearest Neighbor, and 2-opt optimized routes side-by-side with real road routing.
           </p>
+        </div>
+
+        {/* Global City Switcher Bar */}
+        <div className="flex flex-wrap items-center justify-between gap-3 p-3 sm:p-4 bg-white rounded-2xl border border-forest-100 shadow-soft-sm mb-6">
+          <div className="flex items-center gap-2.5">
+            <MapPin className="w-4 h-4 text-teal-600 shrink-0" />
+            <span className="text-xs font-bold text-slate-500">Route City:</span>
+            <span className="text-xs font-extrabold px-3 py-1 rounded-full bg-forest-900 text-teal-300 shadow-sm">
+              {currentCity}
+            </span>
+            {discoveringCity && (
+              <span className="text-[11px] text-teal-700 font-semibold animate-pulse flex items-center gap-1.5 ml-2">
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Fetching OSM places...
+              </span>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {['Bengaluru', 'Tokyo', 'San Francisco', 'Zürich', 'Jaipur'].map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => {
+                  if (currentCity.toLowerCase() !== c.toLowerCase()) {
+                    setCurrentCity(c);
+                    setSearchParams({ city: c });
+                    setSelectedIds([]);
+                    setStartPlaceId(null);
+                    setRouteResult(null);
+                    setRoadRoute(null);
+                  }
+                }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                  currentCity.toLowerCase() === c.toLowerCase()
+                    ? 'bg-teal-500 text-forest-950 font-bold shadow-soft-sm'
+                    : 'bg-sand-100 hover:bg-forest-100 text-slate-700 hover:text-forest-900'
+                }`}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Error alerts */}
@@ -696,11 +775,39 @@ export default function RoutePlannerPage() {
           </div>
         )}
 
+        {/* Mobile View Toggle (Planner stops vs Map & Results) */}
+        <div className="flex lg:hidden bg-sand-200/70 p-1 rounded-2xl mb-4 w-full">
+          <button
+            type="button"
+            onClick={() => setMobilePlannerTab('planner')}
+            className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all ${
+              mobilePlannerTab === 'planner'
+                ? 'bg-white text-forest-950 shadow-soft-sm'
+                : 'text-forest-700 hover:text-forest-900'
+            }`}
+          >
+            <Route className="w-3.5 h-3.5 text-teal-600" />
+            <span>Stops & Picker ({selectedIds.length})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobilePlannerTab('results')}
+            className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all ${
+              mobilePlannerTab === 'results'
+                ? 'bg-white text-forest-950 shadow-soft-sm'
+                : 'text-forest-700 hover:text-forest-900'
+            }`}
+          >
+            <Navigation className="w-3.5 h-3.5 text-teal-600 rotate-45" />
+            <span>Map & Route {routeResult ? '✓' : ''}</span>
+          </button>
+        </div>
+
         {/* ── Two-column layout ─────────────────────────────────────── */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
 
           {/* ── Left Sidebar ───────────────────────────────────────── */}
-          <div className="lg:col-span-4 flex flex-col gap-4">
+          <div className={`lg:col-span-4 flex-col gap-4 ${mobilePlannerTab === 'planner' ? 'flex' : 'hidden lg:flex'}`}>
 
             {/* Sidebar tab switcher */}
             <div className="flex bg-sand-200/70 p-1 rounded-2xl">
@@ -866,8 +973,8 @@ export default function RoutePlannerPage() {
             )}
           </div>
 
-          {/* ── Right Panel ────────────────────────────────────────── */}
-          <div className="lg:col-span-8 flex flex-col gap-5">
+          {/* ── Right Panel (Map & Route Results) ───────────────────── */}
+          <div className={`lg:col-span-8 flex-col gap-5 ${mobilePlannerTab === 'results' ? 'flex' : 'hidden lg:flex'}`}>
 
             {/* No result yet — placeholder map hint */}
             {!routeResult && !optimizing && (
@@ -1152,6 +1259,7 @@ export default function RoutePlannerPage() {
                   roadRoute={roadRoute}
                   roadLoading={roadLoading}
                   roadError={roadError}
+                  center={cityCenter}
                 />
 
                 {/* Leg breakdown */}

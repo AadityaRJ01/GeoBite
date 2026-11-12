@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "test": "node test/route_optimizer.test.js && node test/geospatial_discovery.test.js && node test/osrm_routing.test.js",
+    "test": "node test/route_optimizer.test.js && node test/geospatial_discovery.test.js && node test/osrm_routing.test.js && node test/global_city_discovery.test.js",
     "test:discovery": "node test/geospatial_discovery.test.js",
     "test:routes": "node test/route_optimizer.test.js",
     "test:osrm": "node test/osrm_routing.test.js",
