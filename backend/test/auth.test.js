@@ -324,3 +324,4 @@ runAuthTests().catch((err) => {
   console.error('Fatal auth test error:', err);
   process.exit(1);
 });
+
