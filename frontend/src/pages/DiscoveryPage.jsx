@@ -12,7 +12,7 @@ import {
   MapPin,
   Search
 } from 'lucide-react';
-import { fetchNearbyPlaces, fetchPlacesInBounds, fetchHealth, discoverCity } from '../services/placesApi';
+import { fetchNearbyPlaces, fetchPlacesInBounds, fetchHealth, discoverCity, searchLocation } from '../services/placesApi';
 import DiscoveryControls from '../components/discovery/DiscoveryControls';
 import NearbySearchControl from '../components/discovery/NearbySearchControl';
 import PlaceList from '../components/discovery/PlaceList';
@@ -24,7 +24,7 @@ import Footer from '../components/Footer';
 // Default discovery center: Bengaluru coordinates
 const DEFAULT_LAT = 12.9716;
 const DEFAULT_LNG = 77.5946;
-const DEFAULT_RADIUS = 10;
+const DEFAULT_RADIUS = 15;
 const PAGE_SIZE = 6;
 
 const POPULAR_CITIES = [
@@ -198,6 +198,8 @@ export default function DiscoveryPage() {
     const parsedLng = parseFloat(qLng ?? sLng);
     const parsedRadius = parseFloat(qRadius ?? sRadius);
 
+    const targetCity = qCity || sCity;
+
     if (
       !isNaN(parsedLat) && parsedLat >= -90 && parsedLat <= 90 &&
       !isNaN(parsedLng) && parsedLng >= -180 && parsedLng <= 180
@@ -207,16 +209,20 @@ export default function DiscoveryPage() {
       if (!isNaN(parsedRadius) && parsedRadius > 0) {
         setRadius(parsedRadius);
       }
-      const city = qCity || sCity || '';
+      const city = targetCity || '';
       setCityName(city);
       if (city) setCityInput(city);
       setPage(1);
-    } else if (qCity || sCity) {
-      const city = qCity || sCity;
-      setCityName(city);
-      setCityInput(city);
+
+      // If a non-Bengaluru city is selected, always trigger discovery to guarantee places & live map sync
+      if (city && !city.toLowerCase().includes('bengaluru')) {
+        triggerCityDiscovery(city);
+      }
+    } else if (targetCity) {
+      setCityName(targetCity);
+      setCityInput(targetCity);
       setPage(1);
-      triggerCityDiscovery(city);
+      triggerCityDiscovery(targetCity);
     }
   }, [location.search, location.state, triggerCityDiscovery]);
 
@@ -266,6 +272,45 @@ export default function DiscoveryPage() {
       if (requestId !== activeRequestIdRef.current) return;
 
       const loadedPlaces = result.places || [];
+
+      // Auto-Discovery Fallback: If 0 places exist in database for this city, automatically discover from OpenStreetMap
+      if (
+        loadedPlaces.length === 0 &&
+        cityName &&
+        cityName.trim() !== '' &&
+        (!searchQuery || !searchQuery.trim()) &&
+        selectedCategory === 'all' &&
+        !minRating &&
+        !maxPrice
+      ) {
+        triggerCityDiscovery(cityName);
+        return;
+      }
+
+      // Keyword City Smart-Redirect: If user typed a city name in the keyword search bar, switch to that city
+      if (
+        loadedPlaces.length === 0 &&
+        searchQuery &&
+        searchQuery.trim().length >= 3 &&
+        selectedCategory === 'all'
+      ) {
+        try {
+          const testLoc = await searchLocation(searchQuery.trim());
+          if (
+            testLoc &&
+            testLoc.cityName &&
+            (testLoc.cityName.toLowerCase() === searchQuery.trim().toLowerCase() ||
+             testLoc.displayName.toLowerCase().includes(searchQuery.trim().toLowerCase()))
+          ) {
+            setSearchQuery('');
+            handleSelectCity(testLoc.cityName);
+            return;
+          }
+        } catch {
+          // Keep as regular search query
+        }
+      }
+
       setPlaces(loadedPlaces);
 
       if (result.pagination) {
@@ -304,7 +349,7 @@ export default function DiscoveryPage() {
         setLoading(false);
       }
     }
-  }, [lat, lng, radius, cityName, selectedCategory, minRating, maxPrice, sortBy, page, searchQuery, discoveringCity]);
+  }, [lat, lng, radius, cityName, selectedCategory, minRating, maxPrice, sortBy, page, searchQuery, discoveringCity, triggerCityDiscovery, handleSelectCity]);
 
   // Execute query whenever filters, location, or page changes
   useEffect(() => {

@@ -185,27 +185,35 @@ function MapEventHandler({
 
   // Fit to search center & radius circle when search center changes
   useEffect(() => {
-    if (!isNearbyActive || !searchCenter || typeof searchCenter.lat !== 'number' || typeof searchCenter.lng !== 'number') {
+    if (
+      !searchCenter ||
+      typeof searchCenter.lat !== 'number' ||
+      typeof searchCenter.lng !== 'number' ||
+      isNaN(searchCenter.lat) ||
+      isNaN(searchCenter.lng)
+    ) {
       return;
     }
 
-    lastProgrammaticCenter.current = searchCenter;
-    const centerLatLng = L.latLng(searchCenter.lat, searchCenter.lng);
-    const radiusMeters = (searchRadius || 5) * 1000;
-    const circleBounds = centerLatLng.toBounds(radiusMeters);
+    const lat = Number(searchCenter.lat);
+    const lng = Number(searchCenter.lng);
+    lastProgrammaticCenter.current = { lat, lng };
 
     const validCoords = (places || [])
       .filter((p) => p.hasValidCoordinates)
       .map((p) => [p.latitude, p.longitude]);
 
     if (validCoords.length > 0) {
+      const centerLatLng = L.latLng(lat, lng);
+      const radiusMeters = (searchRadius || 15) * 1000;
+      const circleBounds = centerLatLng.toBounds(radiusMeters);
       const placesBounds = L.latLngBounds(validCoords);
       const combined = circleBounds.extend(placesBounds);
-      map.fitBounds(combined, { padding: [40, 40], maxZoom: 15 });
+      map.fitBounds(combined, { padding: [40, 40], maxZoom: 14, animate: true });
     } else {
-      map.fitBounds(circleBounds, { padding: [40, 40], maxZoom: 15 });
+      map.setView([lat, lng], 12, { animate: true });
     }
-  }, [isNearbyActive, searchCenter, searchRadius, places, map]);
+  }, [searchCenter?.lat, searchCenter?.lng, searchRadius, places, map]);
 
   // Initial fit to bounds when valid places load (non-nearby mode)
   useEffect(() => {
