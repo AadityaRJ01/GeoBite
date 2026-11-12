@@ -9,12 +9,18 @@ import {
   MapPin,
   Route,
   BarChart2,
+  User,
+  LogIn,
+  LogOut,
+  UserPlus,
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 export default function Navbar({ healthStatus, pageTag, extraActions }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const location = useLocation();
+  const { user, isAuthenticated, logout } = useAuth();
 
   const isDiscover = location.pathname.startsWith('/discover') || location.pathname.startsWith('/places');
   const isRoute = location.pathname.startsWith('/route');
@@ -196,6 +202,48 @@ export default function Navbar({ healthStatus, pageTag, extraActions }) {
               </div>
             )}
 
+            {/* Authentication Navigation (Desktop) */}
+            <div className="hidden sm:flex items-center gap-2 border-l border-sand-200/80 pl-2 sm:pl-3">
+              {isAuthenticated ? (
+                <div className="flex items-center gap-1.5">
+                  <Link
+                    to="/profile"
+                    className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl hover:bg-forest-50/80 border border-sand-200/60 transition-all text-xs font-bold text-forest-950 group"
+                    title="View Profile"
+                  >
+                    <div className="w-6 h-6 rounded-lg bg-forest-900 text-teal-300 flex items-center justify-center font-bold text-xs shadow-soft-sm group-hover:scale-105 transition-transform">
+                      {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
+                    </div>
+                    <span className="max-w-[100px] truncate">{user?.name || 'Profile'}</span>
+                  </Link>
+                  <button
+                    onClick={logout}
+                    className="p-1.5 rounded-xl text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                    title="Sign Out"
+                    aria-label="Sign Out"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <Link
+                    to="/login"
+                    className="px-3 py-1.5 text-xs font-bold text-slate-700 hover:text-forest-950 hover:bg-forest-50 rounded-xl transition-colors"
+                  >
+                    Log In
+                  </Link>
+                  <Link
+                    to="/register"
+                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white rounded-xl shadow-soft-sm transition-all"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    <span>Sign Up</span>
+                  </Link>
+                </div>
+              )}
+            </div>
+
             {/* Mobile Menu Toggle Button */}
             <div className="flex md:hidden items-center">
               <button
@@ -308,6 +356,60 @@ export default function Navbar({ healthStatus, pageTag, extraActions }) {
               </a>
             </div>
           )}
+
+          {/* Authentication Section (Mobile Drawer) */}
+          <div className="pt-2 border-t border-slate-100">
+            {isAuthenticated ? (
+              <div className="p-3 rounded-2xl bg-forest-50/60 border border-forest-100 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-forest-900 text-teal-300 flex items-center justify-center font-bold text-sm shadow-soft-sm">
+                      {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-forest-950">{user?.name}</p>
+                      <p className="text-[11px] text-slate-500 truncate max-w-[180px]">{user?.email}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      logout();
+                      setMobileMenuOpen(false);
+                    }}
+                    className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-100/60 transition-colors cursor-pointer"
+                    title="Sign Out"
+                    aria-label="Sign Out"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                </div>
+                <Link
+                  to="/profile"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="block text-center py-2 rounded-xl bg-white border border-forest-200 text-xs font-bold text-forest-900 hover:bg-forest-50 transition-colors shadow-soft-sm"
+                >
+                  Manage Profile
+                </Link>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <Link
+                  to="/login"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="w-full text-center py-2.5 rounded-xl bg-sand-100 hover:bg-sand-200 text-slate-800 text-xs font-bold transition-colors"
+                >
+                  Log In
+                </Link>
+                <Link
+                  to="/register"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="w-full text-center py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-soft-sm transition-colors"
+                >
+                  Sign Up
+                </Link>
+              </div>
+            )}
+          </div>
 
           {/* Drawer CTA */}
           <div className="pt-2">
