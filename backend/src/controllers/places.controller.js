@@ -30,12 +30,21 @@ export const getPlaces = async (req, res, next) => {
     }
 
     // Optional city filter to isolate places belonging to a specific city
-    if (city && String(city).trim() !== '') {
+    if (city && String(city).trim() !== '' && String(city).toLowerCase() !== 'all') {
       const cityTerm = String(city).trim();
-      where.OR = [
-        { cityName: { equals: cityTerm, mode: 'insensitive' } },
-        { address: { contains: cityTerm, mode: 'insensitive' } },
-      ];
+      if (cityTerm.includes(',')) {
+        const baseCity = cityTerm.split(',')[0].trim();
+        where.OR = [
+          { cityName: { equals: cityTerm, mode: 'insensitive' } },
+          { cityName: { equals: baseCity, mode: 'insensitive' } },
+          { address: { contains: baseCity, mode: 'insensitive' } },
+        ];
+      } else {
+        where.OR = [
+          { cityName: { equals: cityTerm, mode: 'insensitive' } },
+          { address: { contains: cityTerm, mode: 'insensitive' } },
+        ];
+      }
     }
 
     // Optional text keyword search across name, description, address
@@ -151,13 +160,16 @@ export const discoverCity = async (req, res, next) => {
     // 2. Discover and persist places for this city
     let places = [];
     try {
+      console.log(`[DiscoverCity] Discovering places for resolved city "${resolvedLocation.cityName}" (${resolvedLocation.lat}, ${resolvedLocation.lng})...`);
       places = await discoverPlacesForCity({
         cityName: resolvedLocation.cityName,
         lat: resolvedLocation.lat,
         lng: resolvedLocation.lng,
         country: resolvedLocation.country,
+        boundingBox: resolvedLocation.boundingBox,
         refresh: Boolean(refresh),
       });
+      console.log(`[DiscoverCity] City "${resolvedLocation.cityName}" returned ${places.length} places.`);
     } catch (discoveryErr) {
       return res.status(502).json({
         success: false,
@@ -266,6 +278,7 @@ export const getNearbyPlaces = async (req, res, next) => {
       sortOrder,
       query,
       q,
+      city,
     } = req.query;
 
     // 1. Validate latitude
@@ -489,6 +502,12 @@ export const getNearbyPlaces = async (req, res, next) => {
       ? Prisma.sql`AND "priceLevel" IN (${Prisma.join(allowedPriceLevels)})`
       : Prisma.empty;
 
+    let cityCondition = Prisma.empty;
+    if (city && String(city).trim() !== '' && String(city).toLowerCase() !== 'all') {
+      const baseCity = String(city).trim().split(',')[0].trim();
+      cityCondition = Prisma.sql`AND ("cityName" ILIKE ${'%' + baseCity + '%'} OR "address" ILIKE ${'%' + baseCity + '%'})`;
+    }
+
     // Execute count query for accurate pagination metadata
     const countResult = await prisma.$queryRaw`
       SELECT COUNT(*)::int AS total
@@ -502,6 +521,7 @@ export const getNearbyPlaces = async (req, res, next) => {
         ${categoryCondition}
         ${ratingCondition}
         ${priceCondition}
+        ${cityCondition}
         ${searchCondition};
     `;
 
@@ -556,6 +576,7 @@ export const getNearbyPlaces = async (req, res, next) => {
         ${categoryCondition}
         ${ratingCondition}
         ${priceCondition}
+        ${cityCondition}
         ${searchCondition}
       ORDER BY ${orderClause}
       LIMIT ${parsedLimit}

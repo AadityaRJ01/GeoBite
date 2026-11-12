@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import {
   Compass,
@@ -27,6 +27,7 @@ import {
   Activity,
   X,
   Car,
+  Search,
 } from 'lucide-react';
 import { fetchPlaces, optimizeRoute, benchmarkRoutes, fetchRoadRoute, fetchHealth, discoverCity } from '../services/placesApi';
 import RouteMap from '../components/route/RouteMap';
@@ -34,6 +35,19 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
+
+const POPULAR_CITIES = [
+  'Mumbai',
+  'Delhi',
+  'Bengaluru',
+  'Tokyo',
+  'London',
+  'Paris',
+  'New York',
+  'San Francisco',
+  'Zürich',
+  'Jaipur',
+];
 
 const CATEGORY_CONFIG = {
   restaurant: { label: 'Restaurant', icon: Utensils, badge: 'bg-amber-50 text-amber-800 border-amber-200' },
@@ -418,6 +432,8 @@ export default function RoutePlannerPage() {
 
   const urlCity = searchParams.get('city') || location.state?.city || 'Bengaluru';
   const [currentCity, setCurrentCity] = useState(urlCity);
+  const [cityInput, setCityInput] = useState(urlCity);
+  const [cityCoords, setCityCoords] = useState(null);
   const [discoveringCity, setDiscoveringCity] = useState(false);
 
   // All available places
@@ -425,17 +441,43 @@ export default function RoutePlannerPage() {
   const [loadingPlaces, setLoadingPlaces] = useState(true);
   const [placesError, setPlacesError] = useState(null);
 
-  // Sync city state when URL searchParams or location state change
-  useEffect(() => {
-    const qCity = searchParams.get('city') || location.state?.city;
-    if (qCity && qCity !== currentCity) {
-      setCurrentCity(qCity);
+  // Race condition guard for city switching
+  const activeCityRequestRef = useRef(0);
+
+  // Switch to any city, resetting selection and route
+  const handleSwitchCity = useCallback((targetCity) => {
+    if (!targetCity || !targetCity.trim()) return;
+    const cleanCity = targetCity.trim();
+    if (currentCity.toLowerCase() !== cleanCity.toLowerCase()) {
+      setCurrentCity(cleanCity);
+      setCityInput(cleanCity);
+      setSearchParams({ city: cleanCity });
       setSelectedIds([]);
       setStartPlaceId(null);
       setRouteResult(null);
       setRoadRoute(null);
     }
-  }, [searchParams, location.state]);
+  }, [currentCity, setSearchParams]);
+
+  const handleCityInputSubmit = useCallback((e) => {
+    if (e) e.preventDefault();
+    if (cityInput && cityInput.trim()) {
+      handleSwitchCity(cityInput.trim());
+    }
+  }, [cityInput, handleSwitchCity]);
+
+  // Sync city state when URL searchParams or location state change
+  useEffect(() => {
+    const qCity = searchParams.get('city') || location.state?.city;
+    if (qCity && qCity.toLowerCase() !== currentCity.toLowerCase()) {
+      setCurrentCity(qCity);
+      setCityInput(qCity);
+      setSelectedIds([]);
+      setStartPlaceId(null);
+      setRouteResult(null);
+      setRoadRoute(null);
+    }
+  }, [searchParams, location.state, currentCity]);
 
   // User itinerary selection
   const [selectedIds, setSelectedIds] = useState([]);
@@ -479,6 +521,7 @@ export default function RoutePlannerPage() {
 
   // Load places for the current city
   useEffect(() => {
+    const requestId = ++activeCityRequestRef.current;
     let mounted = true;
     setLoadingPlaces(true);
     setPlacesError(null);
@@ -486,28 +529,43 @@ export default function RoutePlannerPage() {
     const loadPlaces = async () => {
       try {
         let data = await fetchPlaces({ city: currentCity });
+        if (requestId !== activeCityRequestRef.current) return;
         let cityPlaces = data.places || [];
 
-        // If no places exist yet for this city, automatically discover from Overpass API
+        // If no places exist yet for this city, automatically discover from OSM Overpass/Nominatim
         if (cityPlaces.length === 0 && currentCity) {
           if (mounted) setDiscoveringCity(true);
           try {
-            await discoverCity({ city: currentCity });
-            data = await fetchPlaces({ city: currentCity });
-            cityPlaces = data.places || [];
+            const discRes = await discoverCity({ city: currentCity });
+            if (requestId !== activeCityRequestRef.current) return;
+            if (discRes.city && typeof discRes.city.lat === 'number' && typeof discRes.city.lng === 'number') {
+              setCityCoords([discRes.city.lat, discRes.city.lng]);
+            }
+            cityPlaces = discRes.places || [];
+            if (cityPlaces.length === 0) {
+              const refetch = await fetchPlaces({ city: currentCity });
+              if (requestId !== activeCityRequestRef.current) return;
+              cityPlaces = refetch.places || [];
+            }
           } catch (discErr) {
             console.warn('Auto city discovery in route planner:', discErr);
           } finally {
-            if (mounted) setDiscoveringCity(false);
+            if (mounted && requestId === activeCityRequestRef.current) setDiscoveringCity(false);
           }
         }
 
-        if (mounted) {
+        if (mounted && requestId === activeCityRequestRef.current) {
           setAllPlaces(cityPlaces);
+          if (cityPlaces.length > 0) {
+            const valid = cityPlaces.filter((p) => p.hasValidCoordinates);
+            if (valid.length > 0) {
+              setCityCoords([valid[0].latitude, valid[0].longitude]);
+            }
+          }
           setLoadingPlaces(false);
         }
       } catch (err) {
-        if (mounted) {
+        if (mounted && requestId === activeCityRequestRef.current) {
           setPlacesError(err.message || 'Failed to load places.');
           setLoadingPlaces(false);
         }
@@ -526,8 +584,9 @@ export default function RoutePlannerPage() {
         return [valid[0].latitude, valid[0].longitude];
       }
     }
+    if (cityCoords) return cityCoords;
     return null;
-  }, [allPlaces]);
+  }, [allPlaces, cityCoords]);
 
   // Derived: selected place objects in selection order
   const selectedPlaces = useMemo(() => {
@@ -721,43 +780,66 @@ export default function RoutePlannerPage() {
         </div>
 
         {/* Global City Switcher Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-3 p-3 sm:p-4 bg-white rounded-2xl border border-forest-100 shadow-soft-sm mb-6">
-          <div className="flex items-center gap-2.5">
-            <MapPin className="w-4 h-4 text-teal-600 shrink-0" />
-            <span className="text-xs font-bold text-slate-500">Route City:</span>
-            <span className="text-xs font-extrabold px-3 py-1 rounded-full bg-forest-900 text-teal-300 shadow-sm">
-              {currentCity}
-            </span>
+        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 p-3 sm:p-4 bg-white rounded-3xl border border-forest-100 shadow-soft-sm mb-6">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-teal-600 shrink-0" />
+              <span className="text-xs font-bold text-slate-500">Route City:</span>
+              <span className="text-xs font-extrabold px-3 py-1 rounded-full bg-forest-900 text-teal-300 shadow-sm">
+                {currentCity}
+              </span>
+            </div>
             {discoveringCity && (
-              <span className="text-[11px] text-teal-700 font-semibold animate-pulse flex items-center gap-1.5 ml-2">
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Fetching OSM places...
+              <span className="text-[11px] text-teal-700 font-semibold animate-pulse flex items-center gap-1.5 ml-1">
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-teal-600" />
+                Fetching OSM places...
               </span>
             )}
           </div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            {['Bengaluru', 'Tokyo', 'San Francisco', 'Zürich', 'Jaipur'].map((c) => (
+
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+            {/* Quick city pills */}
+            <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+              {POPULAR_CITIES.map((c) => {
+                const isActive = currentCity.toLowerCase().includes(c.toLowerCase());
+                return (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => handleSwitchCity(c)}
+                    disabled={discoveringCity}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+                      isActive
+                        ? 'bg-teal-500 text-forest-950 font-bold shadow-soft-sm'
+                        : 'bg-sand-100 hover:bg-forest-100 text-slate-700 hover:text-forest-900'
+                    }`}
+                  >
+                    {c}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Dynamic city search form */}
+            <form onSubmit={handleCityInputSubmit} className="flex items-center gap-1.5">
+              <div className="relative flex-1 sm:w-44">
+                <input
+                  type="text"
+                  value={cityInput}
+                  onChange={(e) => setCityInput(e.target.value)}
+                  placeholder="Plan in any city..."
+                  className="w-full pl-7 pr-2.5 py-1.5 bg-sand-50 rounded-xl text-xs text-forest-950 border border-sand-200 focus:outline-none focus:border-teal-500 focus:bg-white transition-all font-medium"
+                />
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
               <button
-                key={c}
-                type="button"
-                onClick={() => {
-                  if (currentCity.toLowerCase() !== c.toLowerCase()) {
-                    setCurrentCity(c);
-                    setSearchParams({ city: c });
-                    setSelectedIds([]);
-                    setStartPlaceId(null);
-                    setRouteResult(null);
-                    setRoadRoute(null);
-                  }
-                }}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                  currentCity.toLowerCase() === c.toLowerCase()
-                    ? 'bg-teal-500 text-forest-950 font-bold shadow-soft-sm'
-                    : 'bg-sand-100 hover:bg-forest-100 text-slate-700 hover:text-forest-900'
-                }`}
+                type="submit"
+                disabled={discoveringCity || !cityInput.trim()}
+                className="px-3 py-1.5 rounded-xl bg-forest-900 hover:bg-forest-800 disabled:opacity-50 text-teal-300 text-xs font-bold transition-all cursor-pointer shrink-0"
               >
-                {c}
+                Plan
               </button>
-            ))}
+            </form>
           </div>
         </div>
 

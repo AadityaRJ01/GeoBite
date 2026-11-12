@@ -4,6 +4,7 @@ import { Search, MapPin, Navigation, Sparkles, SlidersHorizontal, ShieldCheck, Z
 import { geocodeCity } from '../services/geocoding';
 
 const POPULAR_DESTINATIONS = [
+  { name: 'Mumbai, India', coords: '19.0760° N, 72.8777° E', count: '35+ verified spots' },
   { name: 'Bengaluru, India', coords: '12.9716° N, 77.5946° E', count: '18 verified spots' },
   { name: 'Tokyo, Japan', coords: '35.6762° N, 139.6503° E', count: '1.2k+ spots' },
   { name: 'San Francisco, CA', coords: '37.7749° N, 122.4194° W', count: '850+ spots' },

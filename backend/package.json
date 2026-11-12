@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "test": "node test/route_optimizer.test.js && node test/geospatial_discovery.test.js && node test/osrm_routing.test.js && node test/global_city_discovery.test.js && node test/auth.test.js",
+    "test": "node test/route_optimizer.test.js && node test/geospatial_discovery.test.js && node test/osrm_routing.test.js && node test/global_city_discovery.test.js && node test/auth.test.js && node test/dynamic_city_discovery.test.js",
+    "test:dynamic": "node test/dynamic_city_discovery.test.js",
     "test:auth": "node test/auth.test.js",
     "test:discovery": "node test/geospatial_discovery.test.js",
     "test:routes": "node test/route_optimizer.test.js",

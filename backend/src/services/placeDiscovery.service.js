@@ -20,7 +20,7 @@ const OVERPASS_MIRRORS = [
 ].filter(Boolean);
 
 const USER_AGENT = 'GeoBite-Platform/1.0 (contact@geobite.app; https://geobite.app)';
-const REQUEST_TIMEOUT_MS = 8000;
+const REQUEST_TIMEOUT_MS = 3500;
 
 // Concurrency guard: maps normalized cityName -> active in-flight discovery Promise
 const activeDiscoveries = new Map();
@@ -171,70 +171,69 @@ async function fetchOverpassElements({ lat, lng, radiusMeters = 10000 }) {
 
 /**
  * Fallback: Queries OpenStreetMap Nominatim for real POIs in the city bounding box
- * when Overpass instances are overloaded or timing out.
+ * when Overpass instances are overloaded or timing out. Queries categories in parallel
+ * for maximum performance.
  *
  * @param {Object} coords
  * @param {number} coords.lat
  * @param {number} coords.lng
  * @param {string} [coords.cityName]
  * @param {string} [coords.country]
+ * @param {Object} [coords.boundingBox]
  * @returns {Promise<Array>}
  */
-async function fetchNominatimElements({ lat, lng, cityName = '', country = '' }) {
-  const dLat = 0.08;
-  const dLng = 0.10;
-  const minLat = (lat - dLat).toFixed(4);
-  const maxLat = (lat + dLat).toFixed(4);
-  const minLon = (lng - dLng).toFixed(4);
-  const maxLon = (lng + dLng).toFixed(4);
+async function fetchNominatimElements({ lat, lng, cityName = '', country = '', boundingBox = null }) {
+  const minLat = boundingBox && typeof boundingBox.minLat === 'number' ? boundingBox.minLat.toFixed(4) : (lat - 0.10).toFixed(4);
+  const maxLat = boundingBox && typeof boundingBox.maxLat === 'number' ? boundingBox.maxLat.toFixed(4) : (lat + 0.10).toFixed(4);
+  const minLon = boundingBox && typeof boundingBox.minLng === 'number' ? boundingBox.minLng.toFixed(4) : (lng - 0.12).toFixed(4);
+  const maxLon = boundingBox && typeof boundingBox.maxLng === 'number' ? boundingBox.maxLng.toFixed(4) : (lng + 0.12).toFixed(4);
 
   const categories = ['restaurant', 'cafe', 'attraction', 'viewpoint', 'museum'];
-  const elements = [];
 
-  for (const cat of categories) {
+  const categoryPromises = categories.map(async (cat) => {
     try {
-      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(cat)}&viewbox=${minLon},${maxLat},${maxLon},${minLat}&bounded=1&format=json&limit=8&addressdetails=1`;
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(cat)}&viewbox=${minLon},${maxLat},${maxLon},${minLat}&bounded=1&format=json&limit=10&addressdetails=1`;
       const res = await fetch(url, {
         headers: { 'User-Agent': USER_AGENT },
-        signal: AbortSignal.timeout(6000),
+        signal: AbortSignal.timeout(5000),
       });
 
-      if (res.ok) {
-        const items = await res.json();
-        for (const item of items) {
-          elements.push({
-            type: item.osm_type || 'node',
-            id: item.osm_id,
-            lat: parseFloat(item.lat),
-            lon: parseFloat(item.lon),
-            tags: {
-              name: item.name || item.display_name.split(',')[0],
-              amenity:
-                item.type === 'restaurant' || item.type === 'cafe'
-                  ? item.type
-                  : cat === 'restaurant' || cat === 'cafe'
-                    ? cat
-                    : undefined,
-              tourism:
-                item.type === 'attraction' || item.type === 'viewpoint' || item.type === 'museum'
-                  ? item.type
-                  : cat === 'attraction' || cat === 'viewpoint' || cat === 'museum'
-                    ? 'attraction'
-                    : undefined,
-              'addr:street': item.address?.road,
-              'addr:city': item.address?.city || item.address?.town || cityName,
-              'addr:suburb': item.address?.suburb || item.address?.neighbourhood,
-              'addr:country': item.address?.country || country,
-            },
-          });
-        }
-      }
-    } catch {
-      // Continue to next category
-    }
-  }
+      if (!res.ok) return [];
+      const items = await res.json();
+      if (!Array.isArray(items)) return [];
 
-  return elements;
+      return items.map((item) => ({
+        type: item.osm_type || 'node',
+        id: item.osm_id,
+        lat: parseFloat(item.lat),
+        lon: parseFloat(item.lon),
+        tags: {
+          name: item.name || item.display_name.split(',')[0],
+          amenity:
+            item.type === 'restaurant' || item.type === 'cafe'
+              ? item.type
+              : cat === 'restaurant' || cat === 'cafe'
+                ? cat
+                : undefined,
+          tourism:
+            item.type === 'attraction' || item.type === 'viewpoint' || item.type === 'museum'
+              ? item.type
+              : cat === 'attraction' || cat === 'viewpoint' || cat === 'museum'
+                ? 'attraction'
+                : undefined,
+          'addr:street': item.address?.road,
+          'addr:city': item.address?.city || item.address?.town || cityName,
+          'addr:suburb': item.address?.suburb || item.address?.neighbourhood,
+          'addr:country': item.address?.country || country,
+        },
+      }));
+    } catch {
+      return [];
+    }
+  });
+
+  const categoryResults = await Promise.all(categoryPromises);
+  return categoryResults.flat();
 }
 
 /**
@@ -385,6 +384,7 @@ export async function persistPlaces(places = []) {
  * @param {number} params.lat
  * @param {number} params.lng
  * @param {string} [params.country]
+ * @param {Object} [params.boundingBox]
  * @param {boolean} [params.refresh=false]
  * @param {number} [params.radiusMeters=12000]
  * @returns {Promise<Array<Object>>}
@@ -394,6 +394,7 @@ export async function discoverPlacesForCity({
   lat,
   lng,
   country = '',
+  boundingBox = null,
   refresh = false,
   radiusMeters = 12000,
 }) {
@@ -409,6 +410,8 @@ export async function discoverPlacesForCity({
   }
 
   const discoveryTask = (async () => {
+    console.log(`[PlaceDiscovery] Request for city "${cityName}" at (${lat}, ${lng}) [refresh=${refresh}]`);
+
     // 1. Check if places already exist in the database for this city
     if (!refresh) {
       const existingPlaces = await prisma.place.findMany({
@@ -417,24 +420,29 @@ export async function discoverPlacesForCity({
           isActive: true,
         },
         orderBy: [{ category: 'asc' }, { name: 'asc' }],
-        take: 50,
+        take: 60,
       });
 
       if (existingPlaces.length >= 8) {
+        console.log(`[PlaceDiscovery] Found ${existingPlaces.length} cached places in database for "${cityName}".`);
         return existingPlaces;
       }
     }
 
     // 2. Fetch fresh real places from OpenStreetMap (Overpass primary, Nominatim fallback)
     let rawElements = [];
+    let providerUsed = 'overpass';
     try {
       rawElements = await fetchOverpassElements({ lat, lng, radiusMeters });
+      console.log(`[PlaceDiscovery] Overpass discovered ${rawElements.length} elements for "${cityName}".`);
     } catch (overpassErr) {
-      console.warn(`Overpass query failed for city "${cityName}": ${overpassErr.message}. Falling back to Nominatim OSM search.`);
+      providerUsed = 'nominatim-parallel';
+      console.warn(`[PlaceDiscovery] Overpass failed for "${cityName}": ${overpassErr.message}. Falling back to Nominatim OSM search.`);
       try {
-        rawElements = await fetchNominatimElements({ lat, lng, cityName, country });
+        rawElements = await fetchNominatimElements({ lat, lng, cityName, country, boundingBox });
+        console.log(`[PlaceDiscovery] Nominatim discovered ${rawElements.length} elements for "${cityName}".`);
       } catch (nomErr) {
-        console.error(`Nominatim fallback also failed for "${cityName}":`, nomErr.message);
+        console.error(`[PlaceDiscovery] Nominatim fallback also failed for "${cityName}":`, nomErr.message);
       }
     }
 
@@ -479,6 +487,7 @@ export async function discoverPlacesForCity({
       take: 60,
     });
 
+    console.log(`[PlaceDiscovery] Successfully saved & returning ${freshPlaces.length} places for "${cityName}" (provider: ${providerUsed}).`);
     return freshPlaces;
   })();
 

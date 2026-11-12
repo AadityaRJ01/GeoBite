@@ -9,7 +9,7 @@
 const NOMINATIM_BASE_URL =
   process.env.NOMINATIM_BASE_URL || 'https://nominatim.openstreetmap.org';
 
-const DEFAULT_TIMEOUT_MS = 6000;
+const DEFAULT_TIMEOUT_MS = 8500;
 const USER_AGENT = 'GeoBite-Platform/1.0 (contact@geobite.app; https://geobite.app)';
 
 // In-memory cache for resolved locations: query -> normalized location object
@@ -145,10 +145,11 @@ export async function searchLocation(query, options = {}) {
     address.city ||
     address.town ||
     address.municipality ||
+    item.name ||
+    address.state_district ||
     address.village ||
     address.county ||
     address.state ||
-    item.name ||
     trimmedQuery;
 
   const country = address.country || '';
@@ -162,6 +163,8 @@ export async function searchLocation(query, options = {}) {
     lng: Number(parsedLng.toFixed(6)),
     boundingBox,
   };
+
+  console.log(`[Geocoding] Query "${trimmedQuery}" -> resolved "${result.cityName}" (${result.lat}, ${result.lng})`);
 
   // Cache normalized result
   geocodeCache.set(cacheKey, result);
