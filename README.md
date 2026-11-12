@@ -205,11 +205,53 @@ All uncaught application errors are intercepted by centralized middleware in `ba
 | `PORT` | `5000` | Port for Express server |
 | `NODE_ENV` | `development` | Runtime environment (`development` / `production`) |
 | `CLIENT_ORIGIN` | `http://localhost:5173` | Allowed CORS origin for frontend |
+| `DATABASE_URL` | PostgreSQL connection string | Database URL with PostGIS extension |
+| `JWT_SECRET` | Secure random string (min 32 chars) | Cryptographic secret for signing and verifying JWT tokens |
+| `JWT_EXPIRES_IN` | `7d` | Token expiration duration (e.g. `7d`, `24h`) |
 
 ### Frontend (`frontend/.env`)
 | Variable | Default | Description |
 |---|---|---|
 | `VITE_API_BASE_URL` | `http://localhost:5000/api` | Base URL of the GeoBite Express backend |
+
+---
+
+## 🔐 Day 17: Authentication & User Profiles
+
+GeoBite features a secure, production-minded authentication and user profile management system engineered to industry standards.
+
+### Authentication Architecture
+1. **Password Hashing**: Passwords hashed using `bcryptjs` with salt round cost factor 12. Plaintext passwords and `passwordHash` are never leaked in API responses.
+2. **Stateless JWT Authorization**: Cryptographically signed JSON Web Tokens (HMAC-SHA256) encode user identity (`userId`, `email`). Validated on all protected endpoints via `authenticateToken` middleware with full signature, expiration, and database user existence verification.
+3. **Session Management**: Tokens are maintained on the frontend via tab-scoped `sessionStorage`, automatically restoring sessions on reload via `GET /api/auth/me`.
+4. **Brute Force Protection**: Sliding-window rate limiting on `/api/auth/register` and `/api/auth/login` mitigates brute-force attacks and credential stuffing.
+5. **Guest Access**: Core geospatial discovery, city switching, route planning, OSRM routing, and benchmarking remain 100% accessible to unauthenticated guests.
+
+### Authentication API Reference
+
+| Method | Endpoint | Auth Required | Description |
+|---|---|---|---|
+| `POST` | `/api/auth/register` | No (Rate-limited) | Register with `name`, `email`, `password`. Returns safe user and JWT. |
+| `POST` | `/api/auth/login` | No (Rate-limited) | Log in with `email` and `password`. Returns safe user and JWT. |
+| `GET` | `/api/auth/me` | Yes (`Bearer <token>`) | Retrieve current authenticated user's profile. |
+| `PUT` | `/api/auth/profile` | Yes (`Bearer <token>`) | Update profile name. Rejects modifications to `id`, `email`, or `password`. |
+| `POST` | `/api/auth/logout` | No | Acknowledges stateless logout, instructing client token clearance. |
+
+### Running Database Migrations
+```bash
+# In backend/
+npx prisma migrate deploy
+npx prisma generate
+```
+
+### Running Authentication & Backend Tests
+```bash
+# Run complete test suite (271 tests across 5 suites)
+npm test --prefix backend
+
+# Run authentication test suite specifically (44 tests)
+npm run test:auth --prefix backend
+```
 
 ---
 
