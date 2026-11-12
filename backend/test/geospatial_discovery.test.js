@@ -297,8 +297,8 @@ async function runGeospatialDiscoveryTests() {
     );
     assert('SQL injection in sortBy fails validation with 400', injectionSort.status === 400);
 
-    const placesStillExist = await getJson('/api/places');
-    assert('Database integrity intact: places count is 18', placesStillExist.data.count === 18);
+    const placesStillExist = await getJson('/api/places?city=Bengaluru');
+    assert('Database integrity intact: Bengaluru places count is 18', placesStillExist.data.count === 18);
 
     // ── 12. Testing Bounding Box Viewport Search (GET /api/places/bounds) ──
     console.log('\n--- 12. Testing Bounding Box Viewport Search (GET /api/places/bounds) ---');

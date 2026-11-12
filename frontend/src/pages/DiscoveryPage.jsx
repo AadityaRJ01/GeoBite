@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { 
   Compass, 
   ListFilter, 
@@ -10,12 +10,13 @@ import {
   Route,
   BarChart2
 } from 'lucide-react';
-import { fetchNearbyPlaces, fetchPlacesInBounds, fetchHealth } from '../services/placesApi';
+import { fetchNearbyPlaces, fetchPlacesInBounds, fetchHealth, discoverCity } from '../services/placesApi';
 import DiscoveryControls from '../components/discovery/DiscoveryControls';
 import NearbySearchControl from '../components/discovery/NearbySearchControl';
 import PlaceList from '../components/discovery/PlaceList';
 import InteractiveMap from '../components/discovery/InteractiveMap';
 import { LoadingSkeleton, ErrorState } from '../components/discovery/StateViews';
+import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 
 // Default discovery center: Bengaluru coordinates
@@ -25,10 +26,40 @@ const DEFAULT_RADIUS = 5;
 const PAGE_SIZE = 6;
 
 export default function DiscoveryPage() {
+  const [searchParams] = useSearchParams();
+  const location = useLocation();
+
+  // Helper to parse query parameters and location state safely
+  const getInitialCoords = () => {
+    const qLat = searchParams.get('lat');
+    const qLng = searchParams.get('lng');
+    const qRadius = searchParams.get('radius');
+    const qCity = searchParams.get('city');
+
+    const sLat = location.state?.lat;
+    const sLng = location.state?.lng;
+    const sRadius = location.state?.radius;
+    const sCity = location.state?.city;
+
+    const parsedLat = parseFloat(qLat ?? sLat);
+    const parsedLng = parseFloat(qLng ?? sLng);
+    const parsedRadius = parseFloat(qRadius ?? sRadius);
+
+    const initialLat = !isNaN(parsedLat) && parsedLat >= -90 && parsedLat <= 90 ? parsedLat : DEFAULT_LAT;
+    const initialLng = !isNaN(parsedLng) && parsedLng >= -180 && parsedLng <= 180 ? parsedLng : DEFAULT_LNG;
+    const initialRadius = !isNaN(parsedRadius) && parsedRadius > 0 ? parsedRadius : DEFAULT_RADIUS;
+    const initialCity = qCity || sCity || (initialLat === DEFAULT_LAT && initialLng === DEFAULT_LNG ? 'Bengaluru, India' : '');
+
+    return { initialLat, initialLng, initialRadius, initialCity };
+  };
+
+  const initialValues = getInitialCoords();
+
   // Spatial Search Origin State
-  const [lat, setLat] = useState(DEFAULT_LAT);
-  const [lng, setLng] = useState(DEFAULT_LNG);
-  const [radius, setRadius] = useState(DEFAULT_RADIUS);
+  const [lat, setLat] = useState(initialValues.initialLat);
+  const [lng, setLng] = useState(initialValues.initialLng);
+  const [radius, setRadius] = useState(initialValues.initialRadius);
+  const [cityName, setCityName] = useState(initialValues.initialCity);
 
   // Multi-criteria Filter State
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -50,6 +81,7 @@ export default function DiscoveryPage() {
   const [places, setPlaces] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [discoveringCity, setDiscoveringCity] = useState(false);
 
   // Interactive Selection State
   const [selectedPlaceId, setSelectedPlaceId] = useState(null);
@@ -63,6 +95,68 @@ export default function DiscoveryPage() {
 
   // Race condition guard: ignore stale asynchronous responses
   const activeRequestIdRef = useRef(0);
+
+  // Synchronize state when query params or location state change (e.g., in-app navigation)
+  useEffect(() => {
+    const qLat = searchParams.get('lat');
+    const qLng = searchParams.get('lng');
+    const qRadius = searchParams.get('radius');
+    const qCity = searchParams.get('city');
+
+    const sLat = location.state?.lat;
+    const sLng = location.state?.lng;
+    const sRadius = location.state?.radius;
+    const sCity = location.state?.city;
+
+    const parsedLat = parseFloat(qLat ?? sLat);
+    const parsedLng = parseFloat(qLng ?? sLng);
+    const parsedRadius = parseFloat(qRadius ?? sRadius);
+
+    if (
+      !isNaN(parsedLat) && parsedLat >= -90 && parsedLat <= 90 &&
+      !isNaN(parsedLng) && parsedLng >= -180 && parsedLng <= 180
+    ) {
+      setLat(parsedLat);
+      setLng(parsedLng);
+      if (!isNaN(parsedRadius) && parsedRadius > 0) {
+        setRadius(parsedRadius);
+      }
+      setCityName(qCity || sCity || '');
+      setPage(1);
+    } else if (qCity || sCity) {
+      setCityName(qCity || sCity);
+      setPage(1);
+    }
+  }, [location.search, location.state]);
+
+  // Synchronize places via backend OpenStreetMap Overpass discovery
+  useEffect(() => {
+    if (!cityName || cityName.trim() === '') return;
+    let isMounted = true;
+    setDiscoveringCity(true);
+
+    discoverCity({ city: cityName, lat, lng })
+      .then((res) => {
+        if (!isMounted) return;
+        if (res.city) {
+          if (typeof res.city.lat === 'number' && typeof res.city.lng === 'number') {
+            setLat(res.city.lat);
+            setLng(res.city.lng);
+          }
+          if (res.city.name) {
+            setCityName(res.city.name);
+          }
+        }
+        setDiscoveringCity(false);
+      })
+      .catch((err) => {
+        if (!isMounted) return;
+        console.warn('City discovery attempt:', err.message);
+        setDiscoveringCity(false);
+      });
+
+    return () => { isMounted = false; };
+  }, [cityName]);
 
   // Unified data fetcher querying PostGIS nearby API
   const fetchPlacesData = useCallback(async () => {
@@ -89,6 +183,7 @@ export default function DiscoveryPage() {
         lat,
         lng,
         radius,
+        city: cityName || undefined,
         category: selectedCategory !== 'all' ? selectedCategory : undefined,
         minRating: minRating ? parseFloat(minRating) : undefined,
         maxPrice: maxPrice || undefined,
@@ -164,10 +259,13 @@ export default function DiscoveryPage() {
   }, []);
 
   // Spatial search submit handler from NearbySearchControl
-  const handleNearbySearch = useCallback(({ lat: newLat, lng: newLng, radius: newRadius, category: newCategory }) => {
+  const handleNearbySearch = useCallback(({ lat: newLat, lng: newLng, radius: newRadius, category: newCategory, cityName: newCityName }) => {
     setLat(newLat);
     setLng(newLng);
     setRadius(newRadius);
+    if (newCityName) {
+      setCityName(newCityName);
+    }
     if (newCategory) {
       setSelectedCategory(newCategory);
     }
@@ -179,6 +277,7 @@ export default function DiscoveryPage() {
     setLat(DEFAULT_LAT);
     setLng(DEFAULT_LNG);
     setRadius(DEFAULT_RADIUS);
+    setCityName('Bengaluru, India');
     setSelectedCategory('all');
     setMinRating('');
     setMaxPrice('');
@@ -304,96 +403,23 @@ export default function DiscoveryPage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-sand-50 selection:bg-teal-500 selection:text-white">
-      {/* Top Header / Navigation */}
-      <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-forest-100 shadow-soft-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16 sm:h-20">
-            {/* Brand Logo & Back to Home */}
-            <div className="flex items-center gap-4">
-              <Link
-                to="/"
-                className="inline-flex items-center gap-2 p-2 rounded-xl text-forest-700 hover:text-forest-900 hover:bg-forest-50 transition-colors"
-                title="Return to Home Landing Page"
-              >
-                <ArrowLeft className="w-5 h-5" />
-                <span className="text-xs font-semibold hidden sm:inline">Home</span>
-              </Link>
-
-              <Link to="/" className="flex items-center gap-2.5 group">
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-forest-900 to-forest-800 flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform duration-200 border border-teal-500/30">
-                  <Compass className="w-4.5 h-4.5 text-teal-400 group-hover:rotate-45 transition-transform duration-500" />
-                </div>
-                <div className="flex flex-col">
-                  <span className="font-extrabold text-xl tracking-tight text-forest-950 flex items-center">
-                    Geo<span className="text-teal-600">Bite</span>
-                    <span className="ml-1.5 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-teal-50 text-teal-700 border border-teal-200/60 rounded">
-                      Discovery
-                    </span>
-                  </span>
-                </div>
-              </Link>
-            </div>
-
-            {/* Header Right: Route Planner Shortcut, Benchmark Shortcut, Refresh, Health Pill */}
-            <div className="flex items-center gap-3">
-              <Link
-                to="/route"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 transition-colors"
-                title="Open the multi-stop Route Planner"
-              >
-                <Route className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Plan Route</span>
-              </Link>
-
-              <Link
-                to="/benchmark"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-700 hover:text-forest-900 bg-sand-100 hover:bg-sand-200 transition-colors"
-                title="Open the Algorithm Benchmark Dashboard"
-              >
-                <BarChart2 className="w-3.5 h-3.5 text-teal-600" />
-                <span className="hidden md:inline">Benchmark</span>
-              </Link>
-
-              <button
-                type="button"
-                onClick={fetchPlacesData}
-                disabled={loading}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-forest-800 bg-sand-100 hover:bg-sand-200 transition-colors disabled:opacity-50 cursor-pointer"
-                title="Refresh places from backend"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-                <span className="hidden sm:inline">Refresh</span>
-              </button>
-
-              <div
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border ${
-                  backendStatus.online
-                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                    : 'bg-amber-50 text-amber-800 border-amber-200'
-                }`}
-                title="PostgreSQL + Express Backend Health Status"
-              >
-                <span className="relative flex h-2 w-2">
-                  <span
-                    className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
-                      backendStatus.online ? 'bg-emerald-400' : 'bg-amber-400'
-                    }`}
-                  />
-                  <span
-                    className={`relative inline-flex rounded-full h-2 w-2 ${
-                      backendStatus.online ? 'bg-emerald-500' : 'bg-amber-500'
-                    }`}
-                  />
-                </span>
-                <span className="hidden sm:inline">
-                  {backendStatus.online ? 'Backend Connected' : 'Connecting API...'}
-                </span>
-                <span className="sm:hidden font-mono text-[10px]">API</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
+      {/* Unified Top Header / Navigation */}
+      <Navbar
+        healthStatus={backendStatus}
+        pageTag="Discovery"
+        extraActions={
+          <button
+            type="button"
+            onClick={fetchPlacesData}
+            disabled={loading}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-forest-800 bg-sand-100 hover:bg-sand-200 border border-sand-200 transition-colors disabled:opacity-50 cursor-pointer shadow-soft-sm"
+            title="Refresh places from backend"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-teal-600 ${loading ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">Refresh</span>
+          </button>
+        }
+      />
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
@@ -405,12 +431,33 @@ export default function DiscoveryPage() {
               <span>PostGIS Geospatial Discovery</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-forest-950 tracking-tight">
-              Explore Verified Culinary & Scenic Spots
+              Explore {cityName ? `${cityName}` : 'Verified Spots'}
             </h1>
             <p className="text-sm text-slate-600 mt-1 max-w-2xl">
               Live spatial distance calculations powered by PostgreSQL and PostGIS GiST indexing. Filter by radius, category, rating, budget, and sort deterministically.
             </p>
           </div>
+
+          {/* Action: Plan Route in current city */}
+          <div className="flex items-center gap-3">
+            <Link
+              to={`/route?city=${encodeURIComponent(cityName || 'Bengaluru')}`}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-forest-900 hover:bg-forest-800 text-teal-300 font-bold text-xs sm:text-sm shadow-soft-sm hover:shadow-soft-md transition-all active:scale-95 cursor-pointer"
+              title={`Open Route Planner for ${cityName || 'current city'}`}
+            >
+              <Route className="w-4 h-4 text-teal-400" />
+              <span>Plan Route in {cityName || 'City'}</span>
+            </Link>
+          </div>
+        </div>
+
+        {/* OSM Discovery Notice Banner */}
+        {discoveringCity && (
+          <div className="mb-5 p-3.5 rounded-2xl bg-teal-50 border border-teal-200 text-teal-900 flex items-center gap-2.5 text-xs font-semibold animate-pulse shadow-soft-sm">
+            <RefreshCw className="w-4 h-4 text-teal-600 animate-spin shrink-0" />
+            <span>Discovering real local spots in <strong>{cityName}</strong> via OpenStreetMap Overpass API...</span>
+          </div>
+        )}
 
           {/* Mobile View Toggle */}
           <div className="flex lg:hidden bg-sand-200/70 p-1 rounded-2xl w-full sm:w-auto self-start">
@@ -439,14 +486,13 @@ export default function DiscoveryPage() {
               <span>Map View</span>
             </button>
           </div>
-        </div>
 
         {/* PostGIS Nearby Search Control */}
         <NearbySearchControl
           onSearchNearby={handleNearbySearch}
           onClearNearby={handleClearNearby}
           isNearbyActive={true}
-          activeParams={{ lat, lng, radius, category: selectedCategory !== 'all' ? selectedCategory : undefined }}
+          activeParams={{ lat, lng, radius, cityName, category: selectedCategory !== 'all' ? selectedCategory : undefined }}
           activeResultCount={pagination.total || places.length}
           loading={loading}
           selectedCategory={selectedCategory}

@@ -4,9 +4,16 @@ import {
   getPlaceById,
   getNearbyPlaces,
   getPlacesWithinBounds,
+  discoverCity,
 } from '../controllers/places.controller.js';
 
 const router = Router();
+
+/**
+ * POST /api/places/discover-city
+ * Discovers and returns places belonging to the selected city via OSM Overpass
+ */
+router.post('/discover-city', discoverCity);
 
 /**
  * GET /api/places/nearby

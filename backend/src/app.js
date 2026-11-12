@@ -3,6 +3,7 @@ import cors from 'cors';
 import healthRoutes from './routes/health.routes.js';
 import placesRoutes from './routes/places.routes.js';
 import routesRoutes from './routes/routes.routes.js';
+import locationRoutes from './routes/location.routes.js';
 
 
 const app = express();
@@ -40,6 +41,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/health', healthRoutes);
 app.use('/api/places', placesRoutes);
 app.use('/api/routes', routesRoutes);
+app.use('/api/locations', locationRoutes);
 
 
 // Root informational endpoint
