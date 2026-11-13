@@ -5,6 +5,7 @@ import placesRoutes from './routes/places.routes.js';
 import routesRoutes from './routes/routes.routes.js';
 import locationRoutes from './routes/location.routes.js';
 import authRoutes from './routes/auth.routes.js';
+import savedRoutesRoutes from './routes/savedRoutes.routes.js';
 
 
 const app = express();
@@ -44,6 +45,7 @@ app.use('/api/places', placesRoutes);
 app.use('/api/routes', routesRoutes);
 app.use('/api/locations', locationRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/saved-routes', savedRoutesRoutes);
 
 
 // Root informational endpoint

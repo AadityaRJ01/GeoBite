@@ -48,14 +48,36 @@ model Place {
 }
 
 model User {
-  id           String   @id @default(uuid())
+  id           String       @id @default(uuid())
   name         String
-  email        String   @unique
+  email        String       @unique
   passwordHash String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  savedRoutes  SavedRoute[]
 
   @@index([email])
   @@map("users")
+}
+
+model SavedRoute {
+  id                     String   @id @default(uuid())
+  userId                 String
+  name                   String
+  cityName               String
+  algorithm              String
+  totalDistanceKm        Float
+  estimatedTravelMinutes Float?
+  stopCount              Int
+  stops                  Json
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([cityName])
+  @@index([createdAt])
+  @@map("saved_routes")
 }
 

@@ -1,43 +1,161 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { 
   Route, 
   Compass, 
   Sparkles,
   Clock,
-  ArrowRight
+  ArrowRight,
+  MapPin,
+  RefreshCw,
+  ExternalLink,
+  Utensils,
+  Coffee,
+  Mountain,
+  Landmark
 } from 'lucide-react';
+import { geocodeCity } from '../services/geocoding';
+import { fetchPlaces, discoverCity } from '../services/placesApi';
 
-const MOCK_WAYPOINTS = [
-  { id: '1', title: 'Atelier Sourdough Bakery', category: 'Food', time: '09:30 AM', coords: '37.7749° N, 122.4194° W', note: 'Start point • Morning bake batch' },
-  { id: '2', title: 'Origin & Steam Espresso', category: 'Café', time: '11:15 AM', coords: '37.7833° N, 122.4167° W', note: 'Waypoint 1 • Single origin pour-over' },
-  { id: '3', title: 'Horizon Point Overlook', category: 'Viewpoint', time: '02:45 PM', coords: '37.7699° N, 122.4469° W', note: 'Waypoint 2 • 360° bay panoramic' },
-  { id: '4', title: 'Hearth & Ember Brasserie', category: 'Food', time: '06:30 PM', coords: '37.7812° N, 122.4089° W', note: 'Destination • Wood-fired seasonal menu' },
-];
+const DEFAULT_CENTER = [12.9716, 77.5946];
+
+function createPreviewMarkerIcon(index, isSelected) {
+  const bg = isSelected ? '#0d9488' : '#1e3a30';
+  const size = isSelected ? 36 : 28;
+  const label = index + 1;
+
+  const html = `
+    <div style="
+      width: ${size}px;
+      height: ${size}px;
+      border-radius: 9999px;
+      background: ${bg};
+      border: 2px solid #ffffff;
+      box-shadow: 0 4px 10px rgba(13,33,27,0.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: sans-serif;
+      font-weight: 800;
+      font-size: ${isSelected ? '14px' : '11px'};
+      color: #ffffff;
+      transform: translate(-50%, -50%);
+      cursor: pointer;
+    ">${label}</div>
+  `;
+
+  return L.divIcon({
+    html,
+    className: '',
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -(size / 2) - 4],
+  });
+}
+
+function MapViewController({ center, places }) {
+  const map = useMap();
+  const lastCenter = useRef(null);
+
+  useEffect(() => {
+    if (!center || typeof center[0] !== 'number' || typeof center[1] !== 'number') return;
+    lastCenter.current = center;
+
+    const valid = (places || [])
+      .filter((p) => p.hasValidCoordinates && typeof p.latitude === 'number' && typeof p.longitude === 'number')
+      .map((p) => [p.latitude, p.longitude]);
+
+    if (valid.length > 0) {
+      const bounds = L.latLngBounds(valid);
+      map.fitBounds(bounds, { padding: [35, 35], maxZoom: 14, animate: true });
+    } else {
+      map.setView(center, 12, { animate: true });
+    }
+  }, [center, places, map]);
+
+  return null;
+}
 
 export default function MapPreviewPlaceholder({ activeCity, selectedCategory }) {
-  const [activeLayer, setActiveLayer] = useState('vector');
-  const [activeWaypoint, setActiveWaypoint] = useState('1');
-  const [isSimulating, setIsSimulating] = useState(false);
+  const [cityCoords, setCityCoords] = useState(DEFAULT_CENTER);
+  const [resolvedCity, setResolvedCity] = useState(activeCity || 'Bengaluru, India');
+  const [places, setPlaces] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedPlaceId, setSelectedPlaceId] = useState(null);
 
-  const handleSimulate = () => {
-    setIsSimulating(true);
-    setTimeout(() => {
-      setIsSimulating(false);
-    }, 1200);
-  };
+  const activeRequestRef = useRef(0);
+
+  // Sync city coordinates & real places whenever activeCity changes
+  useEffect(() => {
+    const targetCity = activeCity || 'Bengaluru, India';
+    const reqId = ++activeRequestRef.current;
+    setLoading(true);
+
+    const loadCityData = async () => {
+      try {
+        const geo = await geocodeCity(targetCity);
+        if (reqId !== activeRequestRef.current) return;
+
+        const coords = [geo.lat, geo.lng];
+        setCityCoords(coords);
+        setResolvedCity(geo.name || targetCity);
+
+        // Fetch real places for this city
+        let placesData = await fetchPlaces({ city: geo.cityName || targetCity });
+        if (reqId !== activeRequestRef.current) return;
+        let loaded = placesData.places || [];
+
+        // If no places exist yet, trigger auto-discovery from OSM
+        if (loaded.length === 0) {
+          try {
+            const discRes = await discoverCity({ city: geo.cityName || targetCity, lat: geo.lat, lng: geo.lng });
+            if (reqId !== activeRequestRef.current) return;
+            loaded = discRes.places || [];
+          } catch (discErr) {
+            console.warn('Preview auto-discovery:', discErr);
+          }
+        }
+
+        if (reqId === activeRequestRef.current) {
+          setPlaces(loaded.slice(0, 8));
+          if (loaded.length > 0) {
+            setSelectedPlaceId(loaded[0].id);
+          }
+        }
+      } catch (err) {
+        if (reqId === activeRequestRef.current) {
+          console.warn('City geocoding preview error:', err.message);
+        }
+      } finally {
+        if (reqId === activeRequestRef.current) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadCityData();
+  }, [activeCity]);
+
+  // Compute polyline coordinates connecting verified spots
+  const polylineCoordinates = useMemo(() => {
+    return places
+      .filter((p) => p.hasValidCoordinates)
+      .map((p) => [p.latitude, p.longitude]);
+  }, [places]);
 
   return (
     <section id="map-preview" className="py-20 relative overflow-hidden bg-sand-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Section Header */}
         <div className="text-center max-w-3xl mx-auto mb-12">
-          {/* Live Day 3 Banner */}
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-teal-50 border border-teal-200 text-teal-900 text-xs sm:text-sm font-semibold mb-4 shadow-sm">
             <Sparkles className="w-4 h-4 text-teal-600 shrink-0" />
-            <span>Day 3 Milestone Live: Frontend-Backend Integration Complete!</span>
+            <span>Interactive Geospatial Intelligence</span>
             <Link
-              to="/discover"
+              to={`/discover?city=${encodeURIComponent(resolvedCity)}`}
               className="ml-2 inline-flex items-center gap-1 text-teal-700 hover:text-teal-900 underline font-bold"
             >
               <span>Explore Live Discovery Map</span>
@@ -46,246 +164,159 @@ export default function MapPreviewPlaceholder({ activeCity, selectedCategory }) 
           </div>
 
           <h2 className="text-3xl sm:text-4xl font-extrabold text-forest-950 tracking-tight">
-            Intelligent Multi-Stop Route Sequencing
+            Live City Geospatial Preview: {resolvedCity}
           </h2>
           <p className="mt-3 text-base sm:text-lg text-slate-600">
-            Preview how GeoBite connects food discoveries, caffeine stops, and scenic panoramas into zero-backtrack corridors.
+            Real OpenStreetMap geographical corridor showing authentic food discoveries, caffeine stops, and scenic panoramas in {resolvedCity}.
           </p>
         </div>
 
-        {/* Map Container Mockup Card */}
+        {/* Live Leaflet Map Container Card */}
         <div className="bg-white rounded-3xl border border-forest-200/90 shadow-soft-lg overflow-hidden">
           {/* Top Control Bar */}
           <div className="px-6 py-4 bg-forest-950 text-white flex flex-wrap items-center justify-between gap-4 border-b border-forest-800">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-teal-500/20 border border-teal-500/40 flex items-center justify-center text-teal-300">
-                <Route className="w-4 h-4" />
+                <MapPin className="w-4 h-4" />
               </div>
               <div>
                 <span className="font-semibold text-sm tracking-wide text-white flex items-center gap-2">
-                  <span>Corridor: {activeCity || 'San Francisco Corridor'}</span>
+                  <span>Live Map: {resolvedCity}</span>
                   <span className="px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider rounded bg-teal-500/20 text-teal-300 border border-teal-500/30">
-                    Day 1 Placeholder
+                    {loading ? 'Resolving...' : `${places.length} Spots Mapped`}
                   </span>
                 </span>
                 <p className="text-xs text-forest-300">
-                  Active Filter: <span className="text-teal-400 capitalize">{selectedCategory}</span> • 4 Optimized Waypoints
+                  Coordinates: <span className="text-teal-400 font-mono">{cityCoords[0].toFixed(4)}° N, {cityCoords[1].toFixed(4)}° E</span>
                 </p>
               </div>
             </div>
 
-            {/* Layer Switcher & Simulator Button */}
-            <div className="flex items-center gap-2 text-xs">
-              <div className="hidden sm:flex bg-forest-900/80 p-1 rounded-xl border border-forest-800">
-                <button
-                  type="button"
-                  onClick={() => setActiveLayer('vector')}
-                  className={`px-3 py-1 rounded-lg font-medium transition-all ${
-                    activeLayer === 'vector'
-                      ? 'bg-teal-500 text-forest-950 font-bold shadow'
-                      : 'text-forest-200 hover:text-white'
-                  }`}
-                >
-                  Vector Clean
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveLayer('terrain')}
-                  className={`px-3 py-1 rounded-lg font-medium transition-all ${
-                    activeLayer === 'terrain'
-                      ? 'bg-teal-500 text-forest-950 font-bold shadow'
-                      : 'text-forest-200 hover:text-white'
-                  }`}
-                >
-                  Elevation Relief
-                </button>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleSimulate}
-                disabled={isSimulating}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-500 text-forest-950 font-bold hover:bg-teal-400 active:scale-95 transition-all shadow-sm"
+            <div className="flex items-center gap-2">
+              <Link
+                to={`/discover?city=${encodeURIComponent(resolvedCity)}`}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-teal-500 hover:bg-teal-400 text-forest-950 font-bold text-xs shadow-sm transition-all cursor-pointer"
               >
-                <Sparkles className={`w-3.5 h-3.5 ${isSimulating ? 'animate-spin' : ''}`} />
-                <span>{isSimulating ? 'Recalculating...' : 'Optimize Waypoints'}</span>
-              </button>
+                <span>Open in Discovery</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </Link>
             </div>
           </div>
 
-          {/* Map Layout: Vector Canvas + Waypoints Timeline */}
+          {/* Map Layout: Live Leaflet Canvas + Real Places Sequencer */}
           <div className="grid grid-cols-1 lg:grid-cols-12 min-h-[480px]">
-            {/* SVG Geospatial Canvas */}
-            <div className="lg:col-span-8 bg-[#0d1a15] relative p-6 flex flex-col justify-between overflow-hidden select-none">
-              {/* Subtle Map Grid lines */}
-              <div 
-                className="absolute inset-0 pointer-events-none opacity-20"
-                style={{
-                  backgroundImage: `linear-gradient(#2dd4bf 1px, transparent 1px), linear-gradient(90deg, #2dd4bf 1px, transparent 1px)`,
-                  backgroundSize: '40px 40px'
-                }}
-              />
+            {/* Live Leaflet Map Container */}
+            <div className="lg:col-span-8 bg-[#0d1a15] relative min-h-[400px] overflow-hidden">
+              <MapContainer
+                center={cityCoords}
+                zoom={12}
+                scrollWheelZoom={false}
+                className="w-full h-full min-h-[420px] z-10"
+              >
+                <TileLayer
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  maxZoom={19}
+                />
+                <MapViewController center={cityCoords} places={places} />
 
-              {/* Decorative Map Contour Topography Lines */}
-              <svg className="absolute inset-0 w-full h-full opacity-15 pointer-events-none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M-100,200 Q200,80 500,220 T1000,180" fill="none" stroke="#2dd4bf" strokeWidth="1.5" />
-                <path d="M-100,280 Q250,150 550,300 T1100,240" fill="none" stroke="#2dd4bf" strokeWidth="1" strokeDasharray="4 4" />
-                <path d="M-100,380 Q300,240 600,380 T1100,320" fill="none" stroke="#2dd4bf" strokeWidth="1.5" />
-                <path d="M100,-50 Q400,200 700,50 T1200,100" fill="none" stroke="#3f8c71" strokeWidth="1" />
-              </svg>
-
-              {/* Overlay Badge */}
-              <div className="relative z-10 flex items-center justify-between">
-                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-forest-900/90 backdrop-blur-md border border-teal-500/30 text-teal-300 text-xs font-mono">
-                  <Compass className="w-3.5 h-3.5 text-teal-400 animate-spin" style={{ animationDuration: '12s' }} />
-                  <span>37.7749° N, 122.4194° W • EPSG:4326</span>
-                </div>
-                <div className="px-2.5 py-1 rounded-lg bg-forest-900/90 text-[11px] font-semibold text-forest-200 border border-forest-700">
-                  Route Matrix: 4 Stops • 4.8 km
-                </div>
-              </div>
-
-              {/* Interactive Vector Route Display */}
-              <div className="relative my-auto py-10 z-10">
-                <svg viewBox="0 0 700 280" className="w-full h-auto overflow-visible">
-                  {/* Defs for gradients & filters */}
-                  <defs>
-                    <linearGradient id="routeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                      <stop offset="0%" stopColor="#14b8a6" />
-                      <stop offset="50%" stopColor="#2dd4bf" />
-                      <stop offset="100%" stopColor="#10b981" />
-                    </linearGradient>
-                    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-                      <feGaussianBlur stdDeviation="3" result="blur" />
-                      <feComposite in="SourceGraphic" in2="blur" operator="over" />
-                    </filter>
-                  </defs>
-
-                  {/* Route Polyline Track */}
-                  <path
-                    d="M 90 200 C 180 80, 270 230, 370 120 S 520 220, 620 90"
-                    fill="none"
-                    stroke="#1b4d3e"
-                    strokeWidth="8"
-                    strokeLinecap="round"
+                {polylineCoordinates.length >= 2 && (
+                  <Polyline
+                    positions={polylineCoordinates}
+                    color="#0d9488"
+                    weight={4}
+                    opacity={0.85}
+                    dashArray="6, 8"
                   />
-                  <path
-                    d="M 90 200 C 180 80, 270 230, 370 120 S 520 220, 620 90"
-                    fill="none"
-                    stroke="url(#routeGradient)"
-                    strokeWidth="3.5"
-                    strokeDasharray="6 6"
-                    className="animate-pulse"
-                  />
+                )}
 
-                  {/* Waypoint Markers */}
-                  {/* Node 1 */}
-                  <g className="cursor-pointer transition-transform duration-200 hover:scale-110" onClick={() => setActiveWaypoint('1')}>
-                    <circle cx="90" cy="200" r="14" fill="#0d211b" stroke="#14b8a6" strokeWidth="3" filter="url(#glow)" />
-                    <circle cx="90" cy="200" r="5" fill="#2dd4bf" />
-                    <rect x="35" y="222" width="110" height="26" rx="6" fill="#0d211b" stroke="#275947" strokeWidth="1" />
-                    <text x="90" y="239" textAnchor="middle" fill="#e2e8f0" fontSize="11" fontWeight="600">
-                      1. Atelier Sourdough
-                    </text>
-                  </g>
+                {places.map((place, index) => {
+                  if (!place.hasValidCoordinates) return null;
+                  const isSelected = selectedPlaceId === place.id;
+                  return (
+                    <Marker
+                      key={place.id}
+                      position={[place.latitude, place.longitude]}
+                      icon={createPreviewMarkerIcon(index, isSelected)}
+                      eventHandlers={{
+                        click: () => setSelectedPlaceId(place.id),
+                      }}
+                    >
+                      <Popup className="geobite-map-popup">
+                        <div className="p-1 min-w-[180px]">
+                          <p className="font-bold text-xs text-forest-950">{place.name}</p>
+                          <p className="text-[11px] text-slate-500 capitalize">{place.category}</p>
+                          <p className="text-[10px] text-slate-400 mt-1 line-clamp-2">{place.address}</p>
+                        </div>
+                      </Popup>
+                    </Marker>
+                  );
+                })}
+              </MapContainer>
 
-                  {/* Node 2 */}
-                  <g className="cursor-pointer transition-transform duration-200 hover:scale-110" onClick={() => setActiveWaypoint('2')}>
-                    <circle cx="280" cy="170" r="14" fill="#0d211b" stroke="#14b8a6" strokeWidth="3" filter="url(#glow)" />
-                    <circle cx="280" cy="170" r="5" fill="#2dd4bf" />
-                    <rect x="230" y="125" width="100" height="26" rx="6" fill="#0d211b" stroke="#275947" strokeWidth="1" />
-                    <text x="280" y="142" textAnchor="middle" fill="#e2e8f0" fontSize="11" fontWeight="600">
-                      2. Origin Espresso
-                    </text>
-                  </g>
-
-                  {/* Node 3 */}
-                  <g className="cursor-pointer transition-transform duration-200 hover:scale-110" onClick={() => setActiveWaypoint('3')}>
-                    <circle cx="430" cy="140" r="14" fill="#0d211b" stroke="#14b8a6" strokeWidth="3" filter="url(#glow)" />
-                    <circle cx="430" cy="140" r="5" fill="#2dd4bf" />
-                    <rect x="375" y="95" width="110" height="26" rx="6" fill="#0d211b" stroke="#275947" strokeWidth="1" />
-                    <text x="430" y="112" textAnchor="middle" fill="#e2e8f0" fontSize="11" fontWeight="600">
-                      3. Horizon Overlook
-                    </text>
-                  </g>
-
-                  {/* Node 4 */}
-                  <g className="cursor-pointer transition-transform duration-200 hover:scale-110" onClick={() => setActiveWaypoint('4')}>
-                    <circle cx="620" cy="90" r="16" fill="#0d211b" stroke="#10b981" strokeWidth="3.5" filter="url(#glow)" />
-                    <circle cx="620" cy="90" r="6" fill="#10b981" />
-                    <rect x="560" y="45" width="120" height="26" rx="6" fill="#0d211b" stroke="#275947" strokeWidth="1" />
-                    <text x="620" y="62" textAnchor="middle" fill="#e2e8f0" fontSize="11" fontWeight="600">
-                      4. Hearth Brasserie
-                    </text>
-                  </g>
-                </svg>
-              </div>
-
-              {/* Map Footer metrics */}
-              <div className="relative z-10 flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-forest-800/80 text-xs text-forest-300">
-                <div className="flex items-center gap-4">
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-teal-400" />
-                    <span>Total Walk: 4.8 km (58 mins)</span>
-                  </span>
-                  <span className="hidden sm:inline text-forest-600">•</span>
-                  <span className="hidden sm:inline">Elevation Gain: +42m</span>
+              {loading && (
+                <div className="absolute inset-0 bg-forest-950/60 backdrop-blur-sm z-20 flex flex-col items-center justify-center text-teal-300 gap-2">
+                  <RefreshCw className="w-6 h-6 animate-spin text-teal-400" />
+                  <span className="text-xs font-semibold">Updating Live Map for {resolvedCity}...</span>
                 </div>
-                <div className="text-[11px] font-mono text-teal-400 bg-forest-900/60 px-2 py-0.5 rounded border border-forest-700">
-                  Ready for MapLibre GL tile render in Day 2
-                </div>
-              </div>
+              )}
             </div>
 
-            {/* Right Waypoint Sequencer Panel */}
-            <div className="lg:col-span-4 bg-white p-6 flex flex-col justify-between border-t lg:border-t-0 lg:border-l border-slate-100">
+            {/* Right Verified Places Sequencer Panel */}
+            <div className="lg:col-span-4 bg-white p-6 flex flex-col justify-between border-t lg:border-t-0 lg:border-l border-slate-100 max-h-[500px] overflow-y-auto">
               <div>
                 <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                   <h3 className="font-bold text-forest-950 text-sm tracking-tight flex items-center gap-2">
                     <Clock className="w-4 h-4 text-teal-600" />
-                    <span>Curated Waypoint Sequence</span>
+                    <span>Verified Spots in {resolvedCity}</span>
                   </h3>
                   <span className="text-[11px] font-semibold text-slate-500 bg-sand-100 px-2 py-0.5 rounded-full">
-                    Day 1 Mock
+                    {places.length} Mapped
                   </span>
                 </div>
 
-                <div className="mt-4 space-y-3">
-                  {MOCK_WAYPOINTS.map((wp, index) => {
-                    const isActive = activeWaypoint === wp.id;
+                <div className="mt-4 space-y-2.5">
+                  {places.length === 0 && !loading && (
+                    <div className="p-4 text-center text-slate-500 text-xs">
+                      No verified spots cached yet for this city. Click below to explore live.
+                    </div>
+                  )}
+
+                  {places.map((place, index) => {
+                    const isSelected = selectedPlaceId === place.id;
                     return (
                       <div
-                        key={wp.id}
-                        onClick={() => setActiveWaypoint(wp.id)}
-                        className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
-                          isActive
-                            ? 'bg-forest-50/70 border-teal-500 shadow-soft-sm ring-1 ring-teal-500/20'
+                        key={place.id}
+                        onClick={() => setSelectedPlaceId(place.id)}
+                        className={`p-3 rounded-2xl border transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-forest-50/80 border-teal-500 shadow-soft-sm ring-1 ring-teal-500/20'
                             : 'bg-white border-slate-200/80 hover:border-forest-200 hover:bg-sand-50/50'
                         }`}
                       >
-                        <div className="flex items-start justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                              isActive ? 'bg-forest-900 text-teal-300' : 'bg-slate-200 text-slate-700'
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                              isSelected ? 'bg-forest-900 text-teal-300' : 'bg-slate-200 text-slate-700'
                             }`}>
                               {index + 1}
                             </span>
-                            <span className="font-bold text-sm text-forest-950">
-                              {wp.title}
+                            <span className="font-bold text-xs text-forest-950 truncate">
+                              {place.name}
                             </span>
                           </div>
-                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-sand-200/60 text-forest-800">
-                            {wp.category}
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-sand-200/60 text-forest-800 capitalize shrink-0">
+                            {place.category}
                           </span>
                         </div>
 
-                        <p className="text-xs text-slate-500 mt-1 pl-7">
-                          {wp.note}
+                        <p className="text-[11px] text-slate-500 mt-1 pl-7 line-clamp-1">
+                          {place.address}
                         </p>
 
-                        <div className="mt-2 pl-7 flex items-center justify-between text-[11px] text-slate-400 font-mono">
-                          <span>{wp.time}</span>
-                          <span>{wp.coords}</span>
+                        <div className="mt-1.5 pl-7 flex items-center justify-between text-[10px] text-slate-400 font-mono">
+                          <span>~{place.estimatedVisitMinutes || 45} mins visit</span>
+                          <span>{place.latitude.toFixed(4)}°, {place.longitude.toFixed(4)}°</span>
                         </div>
                       </div>
                     );
@@ -293,15 +324,15 @@ export default function MapPreviewPlaceholder({ activeCity, selectedCategory }) 
                 </div>
               </div>
 
-              {/* Day 2 Architecture Plan Teaser */}
-              <div className="mt-6 p-4 rounded-2xl bg-forest-900 text-forest-100 text-xs border border-forest-800">
-                <p className="font-semibold text-white flex items-center gap-1.5 mb-1">
-                  <Sparkles className="w-3.5 h-3.5 text-teal-400" />
-                  <span>Next: Day 2 Geospatial Routing</span>
-                </p>
-                <p className="text-forest-200/90 leading-relaxed text-[11px]">
-                  Subsequent days will connect PostGIS geospatial indexing, OSRM/Valhalla routing algorithms, and live MapLibre canvas mapping.
-                </p>
+              {/* Bottom Discovery CTA */}
+              <div className="mt-5 pt-3 border-t border-slate-100">
+                <Link
+                  to={`/discover?city=${encodeURIComponent(resolvedCity)}`}
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-forest-900 hover:bg-forest-800 text-teal-300 text-xs font-bold transition-all shadow-soft-sm cursor-pointer"
+                >
+                  <Compass className="w-4 h-4 text-teal-400" />
+                  <span>Discover All Spots in {resolvedCity}</span>
+                </Link>
               </div>
             </div>
           </div>

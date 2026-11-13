@@ -8,9 +8,11 @@ import {
   ArrowLeft,
   RefreshCw,
   Route,
-  BarChart2
+  BarChart2,
+  MapPin,
+  Search
 } from 'lucide-react';
-import { fetchNearbyPlaces, fetchPlacesInBounds, fetchHealth, discoverCity } from '../services/placesApi';
+import { fetchNearbyPlaces, fetchPlacesInBounds, fetchHealth, discoverCity, searchLocation } from '../services/placesApi';
 import DiscoveryControls from '../components/discovery/DiscoveryControls';
 import NearbySearchControl from '../components/discovery/NearbySearchControl';
 import PlaceList from '../components/discovery/PlaceList';
@@ -22,8 +24,21 @@ import Footer from '../components/Footer';
 // Default discovery center: Bengaluru coordinates
 const DEFAULT_LAT = 12.9716;
 const DEFAULT_LNG = 77.5946;
-const DEFAULT_RADIUS = 5;
+const DEFAULT_RADIUS = 15;
 const PAGE_SIZE = 6;
+
+const POPULAR_CITIES = [
+  'Mumbai',
+  'Delhi',
+  'Bengaluru',
+  'Tokyo',
+  'London',
+  'Paris',
+  'New York',
+  'San Francisco',
+  'Zürich',
+  'Jaipur',
+];
 
 export default function DiscoveryPage() {
   const [searchParams] = useSearchParams();
@@ -60,6 +75,7 @@ export default function DiscoveryPage() {
   const [lng, setLng] = useState(initialValues.initialLng);
   const [radius, setRadius] = useState(initialValues.initialRadius);
   const [cityName, setCityName] = useState(initialValues.initialCity);
+  const [cityInput, setCityInput] = useState(initialValues.initialCity || 'Bengaluru, India');
 
   // Multi-criteria Filter State
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -93,8 +109,78 @@ export default function DiscoveryPage() {
   // Backend Health Status
   const [backendStatus, setBackendStatus] = useState({ online: false, data: null });
 
-  // Race condition guard: ignore stale asynchronous responses
+  // Race condition guards: ignore stale asynchronous responses
   const activeRequestIdRef = useRef(0);
+  const activeDiscoveryIdRef = useRef(0);
+  const skipNextFetchRef = useRef(false);
+
+  // Method to discover authentic places for any selected city
+  const triggerCityDiscovery = useCallback(async (targetCity) => {
+    if (!targetCity || !targetCity.trim()) return;
+    const discoveryId = ++activeDiscoveryIdRef.current;
+    setDiscoveringCity(true);
+    setLoading(true);
+    setError(null);
+
+    try {
+      const res = await discoverCity({ city: targetCity.trim() });
+      if (discoveryId !== activeDiscoveryIdRef.current) return;
+
+      if (res.city) {
+        if (typeof res.city.lat === 'number' && typeof res.city.lng === 'number') {
+          skipNextFetchRef.current = true;
+          setLat(res.city.lat);
+          setLng(res.city.lng);
+        }
+        if (res.city.name) {
+          setCityName(res.city.name);
+          setCityInput(res.city.name);
+        }
+      }
+
+      const returnedPlaces = res.places || [];
+      setPlaces(returnedPlaces);
+      setPagination({
+        page: 1,
+        limit: PAGE_SIZE,
+        total: returnedPlaces.length,
+        totalPages: Math.ceil(returnedPlaces.length / PAGE_SIZE) || 1,
+      });
+
+      if (returnedPlaces.length > 0) {
+        setSelectedPlaceId(returnedPlaces[0].id);
+      } else {
+        setSelectedPlaceId(null);
+      }
+    } catch (err) {
+      if (discoveryId !== activeDiscoveryIdRef.current) return;
+      console.warn('City discovery failed:', err.message);
+      setError(`Failed to discover places for "${targetCity}". ${err.message}`);
+    } finally {
+      if (discoveryId === activeDiscoveryIdRef.current) {
+        setDiscoveringCity(false);
+        setLoading(false);
+      }
+    }
+  }, []);
+
+  const handleSelectCity = useCallback((c) => {
+    if (!c || !c.trim()) return;
+    setCityInput(c);
+    setCityName(c);
+    setPage(1);
+    setSelectedCategory('all');
+    setMinRating('');
+    setMaxPrice('');
+    setSearchQuery('');
+    triggerCityDiscovery(c);
+  }, [triggerCityDiscovery]);
+
+  const handleCityInputSubmit = useCallback((e) => {
+    if (e) e.preventDefault();
+    if (!cityInput || !cityInput.trim()) return;
+    handleSelectCity(cityInput.trim());
+  }, [cityInput, handleSelectCity]);
 
   // Synchronize state when query params or location state change (e.g., in-app navigation)
   useEffect(() => {
@@ -112,6 +198,8 @@ export default function DiscoveryPage() {
     const parsedLng = parseFloat(qLng ?? sLng);
     const parsedRadius = parseFloat(qRadius ?? sRadius);
 
+    const targetCity = qCity || sCity;
+
     if (
       !isNaN(parsedLat) && parsedLat >= -90 && parsedLat <= 90 &&
       !isNaN(parsedLng) && parsedLng >= -180 && parsedLng <= 180
@@ -121,45 +209,31 @@ export default function DiscoveryPage() {
       if (!isNaN(parsedRadius) && parsedRadius > 0) {
         setRadius(parsedRadius);
       }
-      setCityName(qCity || sCity || '');
+      const city = targetCity || '';
+      setCityName(city);
+      if (city) setCityInput(city);
       setPage(1);
-    } else if (qCity || sCity) {
-      setCityName(qCity || sCity);
+
+      // If a non-Bengaluru city is selected, always trigger discovery to guarantee places & live map sync
+      if (city && !city.toLowerCase().includes('bengaluru')) {
+        triggerCityDiscovery(city);
+      }
+    } else if (targetCity) {
+      setCityName(targetCity);
+      setCityInput(targetCity);
       setPage(1);
+      triggerCityDiscovery(targetCity);
     }
-  }, [location.search, location.state]);
-
-  // Synchronize places via backend OpenStreetMap Overpass discovery
-  useEffect(() => {
-    if (!cityName || cityName.trim() === '') return;
-    let isMounted = true;
-    setDiscoveringCity(true);
-
-    discoverCity({ city: cityName, lat, lng })
-      .then((res) => {
-        if (!isMounted) return;
-        if (res.city) {
-          if (typeof res.city.lat === 'number' && typeof res.city.lng === 'number') {
-            setLat(res.city.lat);
-            setLng(res.city.lng);
-          }
-          if (res.city.name) {
-            setCityName(res.city.name);
-          }
-        }
-        setDiscoveringCity(false);
-      })
-      .catch((err) => {
-        if (!isMounted) return;
-        console.warn('City discovery attempt:', err.message);
-        setDiscoveringCity(false);
-      });
-
-    return () => { isMounted = false; };
-  }, [cityName]);
+  }, [location.search, location.state, triggerCityDiscovery]);
 
   // Unified data fetcher querying PostGIS nearby API
   const fetchPlacesData = useCallback(async () => {
+    if (skipNextFetchRef.current) {
+      skipNextFetchRef.current = false;
+      return;
+    }
+    if (discoveringCity) return;
+
     const requestId = ++activeRequestIdRef.current;
     setLoading(true);
     setError(null);
@@ -198,6 +272,45 @@ export default function DiscoveryPage() {
       if (requestId !== activeRequestIdRef.current) return;
 
       const loadedPlaces = result.places || [];
+
+      // Auto-Discovery Fallback: If 0 places exist in database for this city, automatically discover from OpenStreetMap
+      if (
+        loadedPlaces.length === 0 &&
+        cityName &&
+        cityName.trim() !== '' &&
+        (!searchQuery || !searchQuery.trim()) &&
+        selectedCategory === 'all' &&
+        !minRating &&
+        !maxPrice
+      ) {
+        triggerCityDiscovery(cityName);
+        return;
+      }
+
+      // Keyword City Smart-Redirect: If user typed a city name in the keyword search bar, switch to that city
+      if (
+        loadedPlaces.length === 0 &&
+        searchQuery &&
+        searchQuery.trim().length >= 3 &&
+        selectedCategory === 'all'
+      ) {
+        try {
+          const testLoc = await searchLocation(searchQuery.trim());
+          if (
+            testLoc &&
+            testLoc.cityName &&
+            (testLoc.cityName.toLowerCase() === searchQuery.trim().toLowerCase() ||
+             testLoc.displayName.toLowerCase().includes(searchQuery.trim().toLowerCase()))
+          ) {
+            setSearchQuery('');
+            handleSelectCity(testLoc.cityName);
+            return;
+          }
+        } catch {
+          // Keep as regular search query
+        }
+      }
+
       setPlaces(loadedPlaces);
 
       if (result.pagination) {
@@ -236,7 +349,7 @@ export default function DiscoveryPage() {
         setLoading(false);
       }
     }
-  }, [lat, lng, radius, selectedCategory, minRating, maxPrice, sortBy, page, searchQuery]);
+  }, [lat, lng, radius, cityName, selectedCategory, minRating, maxPrice, sortBy, page, searchQuery, discoveringCity, triggerCityDiscovery, handleSelectCity]);
 
   // Execute query whenever filters, location, or page changes
   useEffect(() => {
@@ -448,6 +561,70 @@ export default function DiscoveryPage() {
               <Route className="w-4 h-4 text-teal-400" />
               <span>Plan Route in {cityName || 'City'}</span>
             </Link>
+          </div>
+        </div>
+
+        {/* Dynamic Global City Switcher Bar */}
+        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 p-4 bg-white rounded-3xl border border-forest-100 shadow-soft-sm mb-6">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-teal-600 shrink-0" />
+              <span className="text-xs font-bold text-slate-500">Active City:</span>
+              <span className="text-xs font-extrabold px-3 py-1 rounded-full bg-forest-900 text-teal-300 shadow-sm">
+                {cityName || 'Bengaluru, India'}
+              </span>
+            </div>
+            {discoveringCity && (
+              <span className="text-[11px] text-teal-700 font-semibold animate-pulse flex items-center gap-1.5 ml-1">
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-teal-600" />
+                Discovering OSM places...
+              </span>
+            )}
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+            {/* Quick city pills */}
+            <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+              {POPULAR_CITIES.map((c) => {
+                const isActive = (cityName || '').toLowerCase().includes(c.toLowerCase());
+                return (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => handleSelectCity(c)}
+                    disabled={discoveringCity}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+                      isActive
+                        ? 'bg-teal-500 text-forest-950 font-bold shadow-soft-sm'
+                        : 'bg-sand-100 hover:bg-forest-100 text-slate-700 hover:text-forest-900'
+                    }`}
+                  >
+                    {c}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Dynamic city search form */}
+            <form onSubmit={handleCityInputSubmit} className="flex items-center gap-1.5">
+              <div className="relative flex-1 sm:w-48">
+                <input
+                  type="text"
+                  value={cityInput}
+                  onChange={(e) => setCityInput(e.target.value)}
+                  placeholder="Type any city..."
+                  className="w-full pl-7 pr-2.5 py-1.5 bg-sand-50 rounded-xl text-xs text-forest-950 border border-sand-200 focus:outline-none focus:border-teal-500 focus:bg-white transition-all font-medium"
+                />
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+              <button
+                type="submit"
+                disabled={discoveringCity || !cityInput.trim()}
+                className="px-3 py-1.5 rounded-xl bg-forest-900 hover:bg-forest-800 disabled:opacity-50 text-teal-300 text-xs font-bold transition-all cursor-pointer shrink-0"
+              >
+                Go
+              </button>
+            </form>
           </div>
         </div>
 

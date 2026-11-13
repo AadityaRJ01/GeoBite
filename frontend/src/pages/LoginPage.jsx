@@ -1,189 +1,150 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Compass, Mail, Lock, Eye, EyeOff, ArrowRight, AlertCircle, Loader2 } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
-import Navbar from '../components/Navbar';
-import Footer from '../components/Footer';
+import { useAuth } from '../context/AuthContext.jsx';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
-
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
-  const fromPath = location.state?.from?.pathname || '/discover';
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Return url if redirected from protected action (e.g. Save Trip)
+  const from = location.state?.from || '/';
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setErrorMessage('');
-
+    setError(null);
     if (!email.trim() || !password) {
-      setErrorMessage('Please provide both your email address and password.');
+      setError('Please provide both email and password.');
       return;
     }
 
-    setSubmitting(true);
     try {
-      await login({ email: email.trim(), password });
-      navigate(fromPath, { replace: true });
+      setLoading(true);
+      await login(email.trim(), password, rememberMe);
+      navigate(from, { replace: true });
     } catch (err) {
-      setErrorMessage(err.message || 'Unable to log in. Please check your credentials.');
+      setError(err.message || 'Login failed. Please check your credentials.');
     } finally {
-      setSubmitting(false);
+      setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-sand-50/60 text-slate-800 font-sans selection:bg-teal-500 selection:text-white">
-      <Navbar pageTag="Auth" />
-
-      <main className="flex-1 flex items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
-        <div className="w-full max-w-md">
-          {/* Brand header above card */}
-          <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-forest-900 to-forest-800 text-teal-400 shadow-soft-md border border-teal-500/30 mb-4">
-              <Compass className="w-8 h-8 animate-spin-slow" />
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-forest-950 tracking-tight">
-              Welcome back to Geo<span className="text-teal-600">Bite</span>
-            </h1>
-            <p className="mt-2 text-sm text-slate-600">
-              Sign in to manage your saved routes and personalized discovery.
-            </p>
+    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-gray-50">
+      <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+        <div>
+          <div className="flex justify-center">
+            <span className="text-3xl">🧭</span>
           </div>
-
-          {/* Form Card */}
-          <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-soft-lg border border-forest-100/80">
-            {errorMessage && (
-              <div
-                className="mb-6 p-4 rounded-2xl bg-rose-50 border border-rose-200/80 flex items-start gap-3 animate-fadeIn"
-                role="alert"
-              >
-                <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-                <div className="text-xs sm:text-sm text-rose-800 font-medium">
-                  {errorMessage}
-                </div>
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="space-y-5">
-              {/* Email Field */}
-              <div>
-                <label
-                  htmlFor="login-email"
-                  className="block text-xs font-bold uppercase tracking-wider text-forest-900 mb-1.5"
-                >
-                  Email Address
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                    <Mail className="w-4 h-4" />
-                  </div>
-                  <input
-                    id="login-email"
-                    type="email"
-                    autoComplete="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="explorer@geobite.app"
-                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-sand-200 bg-sand-50/50 text-forest-950 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500/50 focus:border-teal-500 transition-all"
-                  />
-                </div>
-              </div>
-
-              {/* Password Field */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label
-                    htmlFor="login-password"
-                    className="block text-xs font-bold uppercase tracking-wider text-forest-900"
-                  >
-                    Password
-                  </label>
-                </div>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                    <Lock className="w-4 h-4" />
-                  </div>
-                  <input
-                    id="login-password"
-                    type={showPassword ? 'text' : 'password'}
-                    autoComplete="current-password"
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••••••"
-                    className="w-full pl-10 pr-11 py-2.5 rounded-xl border border-sand-200 bg-sand-50/50 text-forest-950 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500/50 focus:border-teal-500 transition-all"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-forest-900 focus:outline-none cursor-pointer"
-                    aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  >
-                    {showPassword ? (
-                      <EyeOff className="w-4 h-4" />
-                    ) : (
-                      <Eye className="w-4 h-4" />
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              {/* Submit Button */}
-              <button
-                type="submit"
-                disabled={submitting}
-                className="w-full py-3 px-4 rounded-xl bg-forest-900 hover:bg-forest-800 text-white font-bold text-sm shadow-soft-sm hover:shadow-soft-md transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed active:scale-[0.99] cursor-pointer"
-              >
-                {submitting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin text-teal-400" />
-                    <span>Signing In...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Sign In</span>
-                    <ArrowRight className="w-4 h-4 text-teal-400" />
-                  </>
-                )}
-              </button>
-            </form>
-
-            <div className="mt-6 pt-6 border-t border-forest-100 text-center">
-              <p className="text-xs sm:text-sm text-slate-600">
-                Don't have an account yet?{' '}
-                <Link
-                  to="/register"
-                  className="font-bold text-teal-700 hover:text-teal-800 transition-colors"
-                >
-                  Create an account
-                </Link>
-              </p>
-            </div>
-          </div>
-
-          {/* Quick guest note */}
-          <div className="mt-6 text-center">
-            <Link
-              to="/discover"
-              className="text-xs font-semibold text-slate-500 hover:text-forest-900 transition-colors inline-flex items-center gap-1"
-            >
-              <span>Continue exploring as Guest</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </Link>
-          </div>
+          <h2 className="mt-4 text-center text-3xl font-extrabold text-gray-900">
+            Welcome back
+          </h2>
+          <p className="mt-2 text-center text-sm text-gray-600">
+            Sign in to access your saved trips, optimized routes, and travel profile.
+          </p>
         </div>
-      </main>
 
-      <Footer />
+        {error && (
+          <div className="rounded-lg bg-red-50 p-4 border border-red-200">
+            <div className="flex">
+              <div className="text-sm text-red-700">{error}</div>
+            </div>
+          </div>
+        )}
+
+        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+          <div className="rounded-md shadow-sm space-y-4">
+            <div>
+              <label htmlFor="email-address" className="block text-xs font-semibold uppercase tracking-wider text-gray-700 mb-1">
+                Email address
+              </label>
+              <input
+                id="email-address"
+                name="email"
+                type="email"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="appearance-none relative block w-full px-3 py-2.5 border border-gray-300 placeholder-gray-400 text-gray-900 rounded-lg focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
+                placeholder="you@example.com"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="password" className="block text-xs font-semibold uppercase tracking-wider text-gray-700 mb-1">
+                Password
+              </label>
+              <div className="relative">
+                <input
+                  id="password"
+                  name="password"
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete="current-password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="appearance-none relative block w-full px-3 py-2.5 border border-gray-300 placeholder-gray-400 text-gray-900 rounded-lg focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm pr-10"
+                  placeholder="••••••••"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-xs text-gray-500 hover:text-gray-700"
+                >
+                  {showPassword ? 'Hide' : 'Show'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              <input
+                id="remember-me"
+                name="remember-me"
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="h-4 w-4 text-emerald-600 focus:ring-emerald-500 border-gray-300 rounded"
+              />
+              <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-900">
+                Remember me
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <button
+              type="submit"
+              disabled={loading}
+              className={`group relative w-full flex justify-center py-2.5 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 transition-colors ${
+                loading ? 'opacity-70 cursor-not-allowed' : ''
+              }`}
+            >
+              {loading ? 'Signing in...' : 'Sign in'}
+            </button>
+          </div>
+        </form>
+
+        <div className="text-center text-sm text-gray-600">
+          Don't have an account yet?{' '}
+          <Link
+            to="/register"
+            state={{ from }}
+            className="font-medium text-emerald-600 hover:text-emerald-500 underline"
+          >
+            Create an account
+          </Link>
+        </div>
+      </div>
     </div>
   );
 }
-
