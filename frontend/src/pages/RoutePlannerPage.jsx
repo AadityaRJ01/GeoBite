@@ -30,6 +30,8 @@ import {
   Search,
 } from 'lucide-react';
 import { fetchPlaces, optimizeRoute, benchmarkRoutes, fetchRoadRoute, fetchHealth, discoverCity } from '../services/placesApi';
+import { saveRoute, fetchSavedRouteById } from '../services/authApi';
+import { useAuth } from '../context/AuthContext';
 import RouteMap from '../components/route/RouteMap';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
@@ -429,8 +431,10 @@ function LegTable({ legs }) {
 export default function RoutePlannerPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
+  const { user, isAuthenticated } = useAuth();
 
   const urlCity = searchParams.get('city') || location.state?.city || 'Bengaluru';
+  const savedRouteId = searchParams.get('savedRouteId');
   const [currentCity, setCurrentCity] = useState(urlCity);
   const [cityInput, setCityInput] = useState(urlCity);
   const [cityCoords, setCityCoords] = useState(null);
@@ -503,6 +507,13 @@ export default function RoutePlannerPage() {
   // Mobile layout tab (planner picker vs map results)
   const [mobilePlannerTab, setMobilePlannerTab] = useState('planner'); // 'planner' | 'results'
 
+  // Save Trip state
+  const [saveModalOpen, setSaveModalOpen] = useState(false);
+  const [tripNameInput, setTripNameInput] = useState('');
+  const [savingTrip, setSavingTrip] = useState(false);
+  const [saveTripSuccess, setSaveTripSuccess] = useState(false);
+  const [saveTripError, setSaveTripError] = useState(null);
+
   // Backend Health Status
   const [healthStatus, setHealthStatus] = useState({ online: false, data: null });
 
@@ -519,7 +530,95 @@ export default function RoutePlannerPage() {
     return () => { mounted = false; };
   }, []);
 
-  // Load places for the current city
+  // Load saved route if savedRouteId query param is present
+  useEffect(() => {
+    if (!savedRouteId) return;
+
+    let isMounted = true;
+    const restoreSavedRoute = async () => {
+      try {
+        const routeData = await fetchSavedRouteById(savedRouteId);
+        if (!isMounted || !routeData) return;
+
+        if (routeData.cityName) {
+          setCurrentCity(routeData.cityName);
+          setCityInput(routeData.cityName);
+        }
+
+        const restoredStops = routeData.stops || [];
+        if (restoredStops.length > 0) {
+          const formattedPlaces = restoredStops.map((s, idx) => ({
+            id: s.id || `stop-${idx}`,
+            name: s.name,
+            latitude: s.latitude,
+            longitude: s.longitude,
+            category: s.category || 'General',
+            address: s.address || '',
+            hasValidCoordinates: true
+          }));
+
+          setAllPlaces(formattedPlaces);
+          setSelectedIds(formattedPlaces.map((p) => p.id));
+          if (restoredStops[0]?.id) {
+            setStartPlaceId(restoredStops[0].id);
+          }
+
+          // Build synthetic route result for immediate visualization
+          const algo = routeData.algorithm === 'nearestneighbor' ? 'nearestNeighbor' : (routeData.algorithm || 'twoOpt');
+          setActiveAlgo(algo);
+
+          const legs = [];
+          for (let i = 0; i < formattedPlaces.length - 1; i++) {
+            legs.push({
+              legIndex: i + 1,
+              fromPlaceId: formattedPlaces[i].id,
+              fromPlaceName: formattedPlaces[i].name,
+              toPlaceId: formattedPlaces[i + 1].id,
+              toPlaceName: formattedPlaces[i + 1].name,
+              distanceKm: (routeData.totalDistanceKm / (formattedPlaces.length - 1))
+            });
+          }
+
+          const mockResult = {
+            totalDistanceKm: routeData.totalDistanceKm,
+            executionTimeMs: 1.0,
+            algorithm: algo,
+            stopCount: formattedPlaces.length,
+            orderedPlaces: formattedPlaces,
+            legs
+          };
+
+          setRouteResult({
+            baselineDistanceKm: routeData.totalDistanceKm,
+            placeCount: formattedPlaces.length,
+            recommended: algo,
+            results: {
+              baseline: mockResult,
+              nearestNeighbor: mockResult,
+              twoOpt: mockResult,
+              [algo]: mockResult
+            },
+            summary: {
+              optimizedDistanceKm: routeData.totalDistanceKm,
+              distanceSavedKm: 0,
+              percentSaved: 0
+            },
+            disclaimer: `Restored itinerary: ${routeData.name} (${routeData.cityName})`
+          });
+
+          if (formattedPlaces[0]) {
+            setCityCoords([formattedPlaces[0].latitude, formattedPlaces[0].longitude]);
+          }
+          setMobilePlannerTab('results');
+        }
+      } catch (err) {
+        console.warn('Could not restore saved route:', err);
+      }
+    };
+
+    restoreSavedRoute();
+    return () => { isMounted = false; };
+  }, [savedRouteId]);
   useEffect(() => {
     const requestId = ++activeCityRequestRef.current;
     let mounted = true;
@@ -678,6 +777,58 @@ export default function RoutePlannerPage() {
 
   // Active route result for current algo tab
   const activeResult = routeResult?.results?.[activeAlgo] || routeResult?.bestRoute || null;
+
+  // Handle Save Trip
+  const handleOpenSaveModal = () => {
+    if (!isAuthenticated) {
+      // Redirect to login with return state
+      window.location.href = `/login?from=${encodeURIComponent(location.pathname + location.search)}`;
+      return;
+    }
+    setTripNameInput(`${currentCity} Trip (${selectedPlaces.length} stops)`);
+    setSaveTripError(null);
+    setSaveTripSuccess(false);
+    setSaveModalOpen(true);
+  };
+
+  const handleConfirmSaveTrip = async (e) => {
+    e.preventDefault();
+    if (!tripNameInput.trim() || !activeResult) return;
+
+    try {
+      setSavingTrip(true);
+      setSaveTripError(null);
+
+      const orderedStops = (activeResult.orderedPlaces || selectedPlaces).map((p, index) => ({
+        id: p.id,
+        name: p.name,
+        latitude: p.latitude,
+        longitude: p.longitude,
+        category: p.category || 'General',
+        address: p.address || '',
+        visitOrder: index + 1
+      }));
+
+      await saveRoute({
+        name: tripNameInput.trim(),
+        cityName: currentCity,
+        algorithm: activeAlgo,
+        totalDistanceKm: activeResult.totalDistanceKm || 0,
+        estimatedTravelMinutes: roadRoute?.durationMinutes || null,
+        stops: orderedStops
+      });
+
+      setSaveTripSuccess(true);
+      setTimeout(() => {
+        setSaveModalOpen(false);
+        setSaveTripSuccess(false);
+      }, 1500);
+    } catch (err) {
+      setSaveTripError(err.message || 'Failed to save trip.');
+    } finally {
+      setSavingTrip(false);
+    }
+  };
 
   // Road Routing (OSRM) State
   const [roadRoute, setRoadRoute] = useState(null);
@@ -1142,6 +1293,16 @@ export default function RoutePlannerPage() {
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
+                      onClick={handleOpenSaveModal}
+                      className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-teal-500 hover:bg-teal-400 text-forest-950 transition-all cursor-pointer shadow-soft-sm"
+                      title="Save this optimized trip to your account"
+                    >
+                      <Star className="w-3.5 h-3.5 fill-forest-950" />
+                      <span>Save Trip</span>
+                    </button>
+
+                    <button
+                      type="button"
                       onClick={handleBenchmark}
                       disabled={benchmarking}
                       className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-teal-500/20 hover:bg-teal-500/30 border border-teal-400/40 text-teal-200 transition-all cursor-pointer disabled:opacity-50"
@@ -1370,6 +1531,99 @@ export default function RoutePlannerPage() {
           </div>
         </div>
       </main>
+
+      {/* Save Trip Modal Dialog */}
+      {saveModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-gray-100 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+              <div className="flex items-center gap-2">
+                <Star className="w-5 h-5 text-teal-600 fill-teal-600" />
+                <h3 className="text-lg font-bold text-forest-950">Save Trip to Account</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSaveModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmSaveTrip} className="mt-4 space-y-4">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
+                  Trip Name
+                </label>
+                <input
+                  type="text"
+                  value={tripNameInput}
+                  onChange={(e) => setTripNameInput(e.target.value)}
+                  placeholder="e.g. Mumbai Heritage Trail"
+                  required
+                  autoFocus
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-forest-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 font-medium"
+                />
+              </div>
+
+              <div className="bg-sand-50 rounded-xl p-3 border border-sand-200/80 text-xs text-slate-600 space-y-1">
+                <div className="flex justify-between">
+                  <span>City:</span>
+                  <span className="font-bold text-forest-950">{currentCity}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Stops:</span>
+                  <span className="font-bold text-forest-950">{activeResult?.orderedPlaces?.length || selectedPlaces.length} locations</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Algorithm:</span>
+                  <span className="font-bold uppercase text-forest-950">{ALGO_META[activeAlgo]?.label || activeAlgo}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Optimized Distance:</span>
+                  <span className="font-bold text-teal-700">{activeResult?.totalDistanceKm?.toFixed(2)} km</span>
+                </div>
+                {roadRoute?.durationMinutes && (
+                  <div className="flex justify-between">
+                    <span>Est. Driving Time:</span>
+                    <span className="font-bold text-teal-700">~{roadRoute.durationMinutes} mins</span>
+                  </div>
+                )}
+              </div>
+
+              {saveTripError && (
+                <div className="p-3 bg-red-50 text-red-700 text-xs rounded-xl border border-red-200">
+                  {saveTripError}
+                </div>
+              )}
+
+              {saveTripSuccess && (
+                <div className="p-3 bg-emerald-50 text-emerald-800 text-xs rounded-xl border border-emerald-200 font-bold flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  Trip saved successfully! View it under "My Trips".
+                </div>
+              )}
+
+              <div className="flex justify-end space-x-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setSaveModalOpen(false)}
+                  className="px-4 py-2 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingTrip || saveTripSuccess}
+                  className="px-4 py-2 bg-gradient-to-r from-teal-600 to-teal-500 hover:from-teal-500 hover:to-teal-400 text-white text-xs font-bold rounded-xl shadow-soft-sm transition-all disabled:opacity-50"
+                >
+                  {savingTrip ? 'Saving...' : 'Save Itinerary'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       <Footer />
     </div>

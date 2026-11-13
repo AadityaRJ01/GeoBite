@@ -1,148 +1,171 @@
 /**
- * GeoBite — Authentication API Service
+ * GeoBite — Auth & Saved Routes API Service
  *
- * Client-side HTTP client for communicating with GeoBite authentication endpoints.
- * Handles register, login, session validation (me), profile updates, and logout.
+ * Provides typed methods for user authentication and managing personal saved trips.
+ * Automatically injects the stored JWT token into requests.
  */
 
-const RAW_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
-const CLEAN_BASE_URL = RAW_BASE_URL.replace(/\/+$/, '');
-const API_BASE_URL = CLEAN_BASE_URL.endsWith('/api')
-  ? CLEAN_BASE_URL
-  : `${CLEAN_BASE_URL}/api`;
+import { API_BASE_URL, ApiError } from './placesApi.js';
 
-export class AuthApiError extends Error {
-  constructor(message, statusCode = 500, details = null) {
-    super(message);
-    this.name = 'AuthApiError';
-    this.statusCode = statusCode;
-    this.details = details;
+const TOKEN_KEY = 'geobite_auth_token';
+
+export function getStoredToken() {
+  try {
+    return localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY) || null;
+  } catch (e) {
+    return null;
   }
 }
 
-/**
- * Executes JSON HTTP request against auth API
- * @param {string} endpoint
- * @param {Object} [options]
- * @returns {Promise<any>}
- */
-async function authRequest(endpoint, options = {}) {
-  const { method = 'GET', body, token, signal } = options;
+export function setStoredToken(token, remember = true) {
+  try {
+    if (token) {
+      if (remember) {
+        localStorage.setItem(TOKEN_KEY, token);
+      } else {
+        sessionStorage.setItem(TOKEN_KEY, token);
+      }
+    } else {
+      localStorage.removeItem(TOKEN_KEY);
+      sessionStorage.removeItem(TOKEN_KEY);
+    }
+  } catch (e) {
+    // ignore local storage restrictions
+  }
+}
+
+export function removeStoredToken() {
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(TOKEN_KEY);
+  } catch (e) {
+    // ignore
+  }
+}
+
+async function request(endpoint, options = {}) {
+  const url = `${API_BASE_URL}${endpoint}`;
+  const token = getStoredToken();
 
   const headers = {
-    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+    ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    ...(options.headers || {})
   };
-
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
-  const url = `${API_BASE_URL}${endpoint}`;
 
   let response;
   try {
     response = await fetch(url, {
-      method,
-      headers,
-      body: body ? JSON.stringify(body) : undefined,
-      signal,
+      ...options,
+      headers
     });
-  } catch (netErr) {
-    throw new AuthApiError(
-      'Unable to connect to the GeoBite authentication server. Please check your network connection.',
+  } catch (err) {
+    throw new ApiError(
+      `Unable to reach GeoBite API at ${url}. Please verify your connection.`,
       0,
-      netErr.message
+      err
     );
   }
 
-  let json = null;
+  let payload = null;
   try {
-    json = await response.json();
-  } catch {
-    // If response was not valid JSON
+    payload = await response.json();
+  } catch (e) {
+    // response not JSON
   }
 
   if (!response.ok) {
-    const errorMsg =
-      json?.error?.message ||
-      json?.message ||
-      `Authentication request failed with HTTP ${response.status}`;
-    throw new AuthApiError(errorMsg, response.status, json?.error);
+    const message = payload?.error?.message || payload?.message || `HTTP ${response.status}: Request failed`;
+    throw new ApiError(message, response.status, payload?.error?.details || payload);
   }
 
-  return json;
+  return payload;
 }
 
-/**
- * Register a new user account
- * @param {Object} params
- * @param {string} params.name
- * @param {string} params.email
- * @param {string} params.password
- * @returns {Promise<{ user: Object, token: string }>}
- */
-export async function registerApi({ name, email, password }) {
-  const res = await authRequest('/auth/register', {
+// ----------------- Auth API -----------------
+
+export async function loginUser(email, password) {
+  const res = await request('/auth/login', {
     method: 'POST',
-    body: { name, email, password },
+    body: JSON.stringify({ email, password })
   });
   return res.data;
 }
 
-/**
- * Log in with existing credentials
- * @param {Object} params
- * @param {string} params.email
- * @param {string} params.password
- * @returns {Promise<{ user: Object, token: string }>}
- */
-export async function loginApi({ email, password }) {
-  const res = await authRequest('/auth/login', {
+export async function registerUser(name, email, password) {
+  const res = await request('/auth/register', {
     method: 'POST',
-    body: { email, password },
+    body: JSON.stringify({ name, email, password })
   });
   return res.data;
 }
 
-/**
- * Fetch current authenticated user profile
- * @param {string} token
- * @returns {Promise<Object>} user object
- */
-export async function getMeApi(token) {
-  const res = await authRequest('/auth/me', {
-    method: 'GET',
-    token,
+export async function fetchCurrentUser() {
+  const res = await request('/auth/me', {
+    method: 'GET'
   });
-  return res.data.user;
+  return res.data;
 }
 
-/**
- * Update current authenticated user profile
- * @param {Object} updates
- * @param {string} updates.name
- * @param {string} token
- * @returns {Promise<Object>} updated user object
- */
-export async function updateProfileApi(updates, token) {
-  const res = await authRequest('/auth/profile', {
+export async function updateUserProfile(data) {
+  const res = await request('/auth/profile', {
     method: 'PUT',
-    body: updates,
-    token,
+    body: JSON.stringify(data)
   });
-  return res.data.user;
+  return res.data;
 }
 
-/**
- * Acknowledge stateless logout
- * @returns {Promise<Object>}
- */
-export async function logoutApi() {
+export async function logoutUser() {
   try {
-    return await authRequest('/auth/logout', { method: 'POST' });
-  } catch {
-    // Client-side logout proceeds even if network request fails
-    return { success: true };
+    await request('/auth/logout', { method: 'POST' });
+  } catch (e) {
+    // Silent fail if network fails during logout
+  } finally {
+    removeStoredToken();
   }
 }
 
+// ----------------- Saved Routes API -----------------
+
+export async function saveRoute(routeData) {
+  const res = await request('/saved-routes', {
+    method: 'POST',
+    body: JSON.stringify(routeData)
+  });
+  return res.data;
+}
+
+export async function fetchSavedRoutes(params = {}) {
+  const searchParams = new URLSearchParams();
+  if (params.city) searchParams.set('city', params.city);
+  if (params.page) searchParams.set('page', params.page);
+  if (params.limit) searchParams.set('limit', params.limit);
+
+  const query = searchParams.toString();
+  const endpoint = `/saved-routes${query ? `?${query}` : ''}`;
+  const res = await request(endpoint, { method: 'GET' });
+  return res.data;
+}
+
+export async function fetchSavedRouteById(id) {
+  const res = await request(`/saved-routes/${id}`, {
+    method: 'GET'
+  });
+  return res.data;
+}
+
+export async function updateSavedRoute(id, data) {
+  const res = await request(`/saved-routes/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data)
+  });
+  return res.data;
+}
+
+export async function deleteSavedRoute(id) {
+  const res = await request(`/saved-routes/${id}`, {
+    method: 'DELETE'
+  });
+  return res;
+}

@@ -246,12 +246,38 @@ npx prisma generate
 
 ### Running Authentication & Backend Tests
 ```bash
-# Run complete test suite (271 tests across 5 suites)
+# Run complete test suite (317 tests across 7 suites)
 npm test --prefix backend
 
 # Run authentication test suite specifically (44 tests)
 npm run test:auth --prefix backend
+
+# Run saved routes & trip history test suite (16 tests)
+npm run test:saved-routes --prefix backend
 ```
+
+---
+
+## 🧳 Day 18: Saved Routes & Trip History
+
+GeoBite provides a complete trip management and persistent itinerary system:
+
+### Key Capabilities
+1. **SavedRoute Model**: Fully relational PostgreSQL model with JSON stop sequences, coordinates, metrics (`totalDistanceKm`, `estimatedTravelMinutes`), city metadata, and foreign key cascade to `User`.
+2. **User Data Isolation**: Robust ownership checks ensuring users can only read, rename, or delete their own saved trips. Unrelated users receive clean 404 responses.
+3. **One-Click Route Restoration**: Restores any saved itinerary on the map via `/routes?savedRouteId=<id>`, preserving stop sequence, coordinates, algorithm, and dynamically recalculating road-following OSRM geometry.
+4. **My Saved Trips Dashboard**: Full `/saved-trips` dashboard featuring city filters, trip metric statistics, rename dialogs, delete confirmation, and quick route navigation.
+5. **Guest Fallback**: Unauthenticated users can explore, plan, and benchmark routes without login; clicking "Save Trip" safely prompts sign-in while preserving user context.
+
+### Saved Routes API Reference
+
+| Method | Endpoint | Auth Required | Description |
+|---|---|---|---|
+| `POST` | `/api/saved-routes` | Yes (`Bearer <token>`) | Save a planned route with stops array, city, algorithm, and metrics. |
+| `GET` | `/api/saved-routes` | Yes (`Bearer <token>`) | List all saved routes for authenticated user with optional `?city=` filter and pagination. |
+| `GET` | `/api/saved-routes/:id` | Yes (`Bearer <token>`) | Retrieve single saved route (verifying ownership). |
+| `PUT` | `/api/saved-routes/:id` | Yes (`Bearer <token>`) | Rename a saved route. |
+| `DELETE` | `/api/saved-routes/:id` | Yes (`Bearer <token>`) | Delete a saved route. |
 
 ---
 

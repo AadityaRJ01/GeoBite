@@ -138,6 +138,21 @@ export default function Navbar({ healthStatus, pageTag, extraActions }) {
               <span>Benchmark</span>
             </Link>
 
+            {isAuthenticated && (
+              <Link
+                to="/saved-trips"
+                aria-current={location.pathname === '/saved-trips' ? 'page' : undefined}
+                className={`text-xs sm:text-sm font-semibold transition-all flex items-center gap-1.5 px-3 py-1.5 rounded-xl ${
+                  location.pathname === '/saved-trips'
+                    ? 'bg-teal-50 text-teal-900 border border-teal-200/80 shadow-soft-sm'
+                    : 'text-slate-600 hover:text-forest-900 hover:bg-forest-50/70'
+                }`}
+              >
+                <Compass className="w-4 h-4 text-teal-600" />
+                <span>My Trips</span>
+              </Link>
+            )}
+
             {isHome && (
               <>
                 <a
@@ -335,6 +350,26 @@ export default function Navbar({ healthStatus, pageTag, extraActions }) {
                 5 Topologies
               </span>
             </Link>
+
+            {isAuthenticated && (
+              <Link
+                to="/saved-trips"
+                onClick={() => setMobileMenuOpen(false)}
+                className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                  location.pathname === '/saved-trips'
+                    ? 'bg-teal-50 text-teal-900 border border-teal-200 shadow-soft-sm'
+                    : 'text-slate-800 hover:bg-sand-50'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Compass className="w-4 h-4 text-teal-600" />
+                  <span>My Saved Trips</span>
+                </div>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold">
+                  Trips
+                </span>
+              </Link>
+            )}
           </div>
 
           {/* Landing anchor links if on home */}

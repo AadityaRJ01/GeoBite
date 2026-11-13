@@ -6,6 +6,7 @@ import LandingPage from './pages/LandingPage';
 import DiscoveryPage from './pages/DiscoveryPage';
 import RoutePlannerPage from './pages/RoutePlannerPage';
 import BenchmarkPage from './pages/BenchmarkPage';
+import SavedTripsPage from './pages/SavedTripsPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import ProfilePage from './pages/ProfilePage';
@@ -20,6 +21,15 @@ function App() {
           <Route path="/places" element={<DiscoveryPage />} />
           <Route path="/route" element={<RoutePlannerPage />} />
           <Route path="/benchmark" element={<BenchmarkPage />} />
+          <Route path="/routes" element={<RoutePlannerPage />} />
+          <Route
+            path="/saved-trips"
+            element={
+              <ProtectedRoute>
+                <SavedTripsPage />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route
