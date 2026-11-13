@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   Star, 
@@ -11,8 +11,11 @@ import {
   Landmark, 
   Navigation,
   Route,
-  ArrowUpRight
+  Share2,
+  ExternalLink,
+  Check
 } from 'lucide-react';
+import { sharePlace, openInGoogleMaps } from '../../services/shareUtils';
 
 const CATEGORY_CONFIG = {
   restaurant: {
@@ -68,6 +71,8 @@ export default function PlaceCard({
   onSelect,
   onFocusMap,
 }) {
+  const [copiedNotice, setCopiedNotice] = useState(false);
+
   const config = CATEGORY_CONFIG[place.category] || {
     label: place.category || 'Spot',
     badge: 'bg-slate-100 text-slate-800 border-slate-200',
@@ -84,6 +89,24 @@ export default function PlaceCard({
     e.stopPropagation();
     if (onSelect) onSelect(place.id);
     if (onFocusMap) onFocusMap(place);
+  };
+
+  const handleShareClick = async (e) => {
+    e.stopPropagation();
+    try {
+      const res = await sharePlace(place);
+      if (res.copied) {
+        setCopiedNotice(true);
+        setTimeout(() => setCopiedNotice(false), 2200);
+      }
+    } catch (err) {
+      console.warn('Share error:', err);
+    }
+  };
+
+  const handleGoogleMapsClick = (e) => {
+    e.stopPropagation();
+    openInGoogleMaps(place);
   };
 
   const handleKeyDown = (e) => {
@@ -181,18 +204,57 @@ export default function PlaceCard({
           )}
         </div>
 
-        {/* Action Controls */}
-        <div className="flex items-center gap-1.5 shrink-0">
+        {/* Action Controls: Locate, Plan, Google Maps & Share */}
+        <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+          {/* Share Button */}
+          <button
+            type="button"
+            onClick={handleShareClick}
+            className={`relative inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+              copiedNotice
+                ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                : 'text-slate-600 bg-white hover:bg-forest-50 border-sand-200/80 hover:text-forest-950'
+            }`}
+            title="Share place or copy Google Maps link"
+            aria-label="Share place"
+          >
+            {copiedNotice ? (
+              <>
+                <Check className="w-3 h-3 text-white" />
+                <span>Copied!</span>
+              </>
+            ) : (
+              <>
+                <Share2 className="w-3 h-3 text-teal-600" />
+                <span className="hidden sm:inline">Share</span>
+              </>
+            )}
+          </button>
+
+          {/* Open in Google Maps */}
+          <button
+            type="button"
+            onClick={handleGoogleMapsClick}
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold text-slate-700 bg-white hover:bg-sand-100 border border-sand-200/80 transition-all cursor-pointer"
+            title="Open directions in Google Maps"
+            aria-label="Open in Google Maps"
+          >
+            <ExternalLink className="w-3 h-3 text-teal-600" />
+            <span className="hidden sm:inline">Maps</span>
+          </button>
+
+          {/* Locate on Internal Leaflet Map */}
           <button
             type="button"
             onClick={handleFocusClick}
-            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200/80 transition-all cursor-pointer"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200/80 transition-all cursor-pointer"
             title="Focus on map"
           >
             <Navigation className="w-3 h-3 text-teal-600" />
-            <span>Map</span>
+            <span>Focus</span>
           </button>
 
+          {/* Plan Route Link */}
           <Link
             to="/route"
             onClick={(e) => e.stopPropagation()}
