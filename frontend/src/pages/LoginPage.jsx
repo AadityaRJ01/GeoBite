@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
+import { Compass, Mail, Lock, Eye, EyeOff, ShieldCheck, ArrowRight } from 'lucide-react';
+import Navbar from '../components/Navbar';
+import Footer from '../components/Footer';
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -14,7 +17,6 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Return url if redirected from protected action (e.g. Save Trip)
   const from = location.state?.from || '/';
 
   const handleSubmit = async (e) => {
@@ -37,114 +39,123 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-gray-50">
-      <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
-        <div>
-          <div className="flex justify-center">
-            <span className="text-3xl">🧭</span>
-          </div>
-          <h2 className="mt-4 text-center text-3xl font-extrabold text-gray-900">
-            Welcome back
-          </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
-            Sign in to access your saved trips, optimized routes, and travel profile.
-          </p>
-        </div>
+    <div className="min-h-screen flex flex-col bg-sand-50 selection:bg-teal-500 selection:text-white">
+      <Navbar pageTag="Sign In" />
 
-        {error && (
-          <div className="rounded-lg bg-red-50 p-4 border border-red-200">
-            <div className="flex">
-              <div className="text-sm text-red-700">{error}</div>
-            </div>
-          </div>
-        )}
+      <main className="flex-1 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
+        {/* Background ambient elements */}
+        <div className="absolute inset-0 bg-geo-dots opacity-40 pointer-events-none" />
+        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[300px] bg-gradient-to-tr from-teal-200/20 via-forest-100/30 to-transparent blur-3xl pointer-events-none rounded-full" />
 
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          <div className="rounded-md shadow-sm space-y-4">
-            <div>
-              <label htmlFor="email-address" className="block text-xs font-semibold uppercase tracking-wider text-gray-700 mb-1">
-                Email address
-              </label>
-              <input
-                id="email-address"
-                name="email"
-                type="email"
-                autoComplete="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="appearance-none relative block w-full px-3 py-2.5 border border-gray-300 placeholder-gray-400 text-gray-900 rounded-lg focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
-                placeholder="you@example.com"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="password" className="block text-xs font-semibold uppercase tracking-wider text-gray-700 mb-1">
-                Password
-              </label>
-              <div className="relative">
-                <input
-                  id="password"
-                  name="password"
-                  type={showPassword ? 'text' : 'password'}
-                  autoComplete="current-password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="appearance-none relative block w-full px-3 py-2.5 border border-gray-300 placeholder-gray-400 text-gray-900 rounded-lg focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm pr-10"
-                  placeholder="••••••••"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-xs text-gray-500 hover:text-gray-700"
-                >
-                  {showPassword ? 'Hide' : 'Show'}
-                </button>
+        <div className="max-w-md w-full relative z-10">
+          <div className="bg-white p-8 sm:p-10 rounded-3xl shadow-soft-lg border border-forest-100">
+            
+            {/* Header Icon */}
+            <div className="text-center mb-8">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-forest-950 to-forest-900 text-teal-300 mx-auto flex items-center justify-center shadow-soft-sm border border-teal-500/30 mb-4">
+                <Compass className="w-6 h-6 text-teal-400" />
               </div>
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-forest-950 font-sans tracking-tight">
+                Welcome back
+              </h1>
+              <p className="mt-2 text-xs sm:text-sm text-slate-500">
+                Access your saved itineraries, custom multi-stop routes, and travel profile.
+              </p>
             </div>
-          </div>
 
-          <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <input
-                id="remember-me"
-                name="remember-me"
-                type="checkbox"
-                checked={rememberMe}
-                onChange={(e) => setRememberMe(e.target.checked)}
-                className="h-4 w-4 text-emerald-600 focus:ring-emerald-500 border-gray-300 rounded"
-              />
-              <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-900">
-                Remember me
-              </label>
+            {error && (
+              <div className="mb-6 p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold animate-in fade-in">
+                {error}
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5 font-sans">
+                  Email Address
+                </label>
+                <div className="relative">
+                  <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">
+                    <Mail className="w-4 h-4 text-slate-400" />
+                  </div>
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="traveler@example.com"
+                    className="w-full pl-10 pr-4 py-3 rounded-xl border border-forest-200 bg-sand-50/50 text-forest-950 placeholder-slate-400 text-sm focus:outline-none focus:bg-white focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all font-medium"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5 font-sans">
+                  Password
+                </label>
+                <div className="relative">
+                  <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">
+                    <Lock className="w-4 h-4 text-slate-400" />
+                  </div>
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full pl-10 pr-11 py-3 rounded-xl border border-forest-200 bg-sand-50/50 text-forest-950 placeholder-slate-400 text-sm focus:outline-none focus:bg-white focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all font-medium"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer p-1"
+                    title={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between text-xs pt-1">
+                <label className="flex items-center gap-2 cursor-pointer select-none text-slate-600 font-medium">
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    className="w-4 h-4 text-teal-600 border-slate-300 rounded focus:ring-teal-500"
+                  />
+                  <span>Stay signed in</span>
+                </label>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-forest-950 via-forest-900 to-forest-800 hover:from-forest-900 hover:to-forest-700 active:scale-95 text-teal-300 font-bold text-sm shadow-soft-sm hover:shadow-soft-md transition-all duration-200 disabled:opacity-70 cursor-pointer flex items-center justify-center gap-2"
+              >
+                <span>{loading ? 'Authenticating...' : 'Sign In'}</span>
+                <ArrowRight className="w-4 h-4 text-teal-400" />
+              </button>
+            </form>
+
+            <div className="mt-8 pt-6 border-t border-slate-100 text-center">
+              <p className="text-xs text-slate-500">
+                New to GeoBite?{' '}
+                <Link
+                  to="/register"
+                  state={{ from }}
+                  className="font-bold text-teal-700 hover:text-teal-800 transition-colors"
+                >
+                  Create an account
+                </Link>
+              </p>
             </div>
-          </div>
 
-          <div>
-            <button
-              type="submit"
-              disabled={loading}
-              className={`group relative w-full flex justify-center py-2.5 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 transition-colors ${
-                loading ? 'opacity-70 cursor-not-allowed' : ''
-              }`}
-            >
-              {loading ? 'Signing in...' : 'Sign in'}
-            </button>
           </div>
-        </form>
-
-        <div className="text-center text-sm text-gray-600">
-          Don't have an account yet?{' '}
-          <Link
-            to="/register"
-            state={{ from }}
-            className="font-medium text-emerald-600 hover:text-emerald-500 underline"
-          >
-            Create an account
-          </Link>
         </div>
-      </div>
+      </main>
+
+      <Footer />
     </div>
   );
 }

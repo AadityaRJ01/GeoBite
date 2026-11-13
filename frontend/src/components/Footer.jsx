@@ -1,141 +1,133 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Compass, ArrowUp, MapPin, Route, BarChart2 } from 'lucide-react';
-
-const CURRENT_YEAR = new Date().getFullYear();
+import { Compass, MapPin, Heart, Shield, Terminal, ArrowUpRight } from 'lucide-react';
 
 export default function Footer() {
-  const scrollToTop = () => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+  const currentYear = new Date().getFullYear();
 
   return (
-    <footer className="bg-forest-950 text-forest-200 border-t border-forest-900 pt-16 pb-12">
+    <footer className="bg-forest-950 text-forest-100 border-t border-forest-900/80 pt-16 pb-12 mt-auto">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-10 pb-12 border-b border-forest-900/80">
-          {/* Brand info */}
+        
+        {/* Main Footer Row */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8 pb-12 border-b border-forest-900/60">
+          
+          {/* Brand Column */}
           <div className="lg:col-span-2 space-y-4">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-forest-900 border border-teal-500/40 flex items-center justify-center text-teal-400">
-                <Compass className="w-5 h-5" />
+            <Link to="/" className="flex items-center gap-2.5">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-teal-500 to-forest-800 flex items-center justify-center shadow-soft-sm border border-teal-400/30">
+                <Compass className="w-5 h-5 text-forest-950" />
               </div>
               <span className="font-extrabold text-2xl tracking-tight text-white font-sans">
                 Geo<span className="text-teal-400">Bite</span>
               </span>
-            </div>
-            <p className="text-sm text-forest-300 max-w-sm leading-relaxed">
-              Production-quality geospatial discovery, TSP route optimization, and real road-routing platform. Engineered for seamless multi-stop journeys, local flavors, and scenic horizons.
+            </Link>
+
+            <p className="text-xs sm:text-sm text-forest-300/80 leading-relaxed max-w-sm font-normal">
+              High-precision travel-tech platform combining PostgreSQL + PostGIS spatial discovery, traveling salesperson heuristics, and real road navigation.
             </p>
-            <div className="flex flex-wrap items-center gap-2 pt-2">
-              <span className="px-2.5 py-1 rounded-md text-[11px] font-mono font-medium bg-forest-900 text-teal-300 border border-forest-800">
-                Full-Stack Architecture
-              </span>
-              <span className="px-2.5 py-1 rounded-md text-[11px] font-mono font-medium bg-forest-900 text-forest-300 border border-forest-800">
-                Express :5000 | Vite :5173
+
+            <div className="flex items-center gap-3 pt-2 text-xs text-forest-300">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-forest-900/80 border border-teal-500/20 text-teal-300 text-[11px] font-mono">
+                <span className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-pulse" />
+                PostGIS EPSG:4326 Ready
               </span>
             </div>
           </div>
 
-          {/* Platform Navigation */}
-          <div>
-            <h4 className="text-white font-bold text-sm tracking-wider uppercase mb-4">
-              Platform
-            </h4>
-            <ul className="space-y-2.5 text-sm text-forest-300">
+          {/* Column 1: Core Engine */}
+          <div className="space-y-3">
+            <p className="text-xs font-bold text-white uppercase tracking-wider font-sans">
+              Travel Intelligence
+            </p>
+            <ul className="space-y-2 text-xs text-forest-300/90 font-medium">
               <li>
-                <Link to="/discover" className="hover:text-teal-400 transition-colors flex items-center gap-1.5">
-                  <MapPin className="w-3.5 h-3.5 text-teal-500" />
-                  <span>Discover Places</span>
+                <Link to="/discover" className="hover:text-teal-300 transition-colors">
+                  Explore Places
                 </Link>
               </li>
               <li>
-                <Link to="/route" className="hover:text-teal-400 transition-colors flex items-center gap-1.5">
-                  <Route className="w-3.5 h-3.5 text-teal-500" />
-                  <span>Route Planner</span>
+                <Link to="/route" className="hover:text-teal-300 transition-colors">
+                  Trip Planner (TSP)
                 </Link>
               </li>
               <li>
-                <Link to="/benchmark" className="hover:text-teal-400 transition-colors flex items-center gap-1.5">
-                  <BarChart2 className="w-3.5 h-3.5 text-teal-500" />
-                  <span>Algorithm Benchmark</span>
+                <Link to="/benchmark" className="hover:text-teal-300 transition-colors">
+                  Algorithm Benchmarks
                 </Link>
               </li>
               <li>
-                <a href="/#architecture" className="hover:text-teal-400 transition-colors">
-                  System Architecture
+                <Link to="/saved-trips" className="hover:text-teal-300 transition-colors">
+                  Saved Itineraries
+                </Link>
+              </li>
+            </ul>
+          </div>
+
+          {/* Column 2: Supported Cities */}
+          <div className="space-y-3">
+            <p className="text-xs font-bold text-white uppercase tracking-wider font-sans">
+              Featured Metros
+            </p>
+            <ul className="space-y-2 text-xs text-forest-300/90 font-medium">
+              <li>
+                <Link to="/discover?city=Mumbai" className="hover:text-teal-300 transition-colors">
+                  Mumbai, India
+                </Link>
+              </li>
+              <li>
+                <Link to="/discover?city=Delhi" className="hover:text-teal-300 transition-colors">
+                  Delhi, India
+                </Link>
+              </li>
+              <li>
+                <Link to="/discover?city=Bengaluru" className="hover:text-teal-300 transition-colors">
+                  Bengaluru, India
+                </Link>
+              </li>
+              <li>
+                <Link to="/discover?city=Tokyo" className="hover:text-teal-300 transition-colors">
+                  Tokyo, Japan
+                </Link>
+              </li>
+            </ul>
+          </div>
+
+          {/* Column 3: Engineering Spec */}
+          <div className="space-y-3">
+            <p className="text-xs font-bold text-white uppercase tracking-wider font-sans">
+              System Architecture
+            </p>
+            <ul className="space-y-2 text-xs text-forest-300/90 font-medium">
+              <li>
+                <a href="/#architecture" className="hover:text-teal-300 transition-colors">
+                  Spatial Architecture
                 </a>
               </li>
-            </ul>
-          </div>
-
-          {/* Engine Highlights */}
-          <div>
-            <h4 className="text-white font-bold text-sm tracking-wider uppercase mb-4">
-              Engines
-            </h4>
-            <ul className="space-y-2.5 text-sm text-forest-300">
-              <li className="text-teal-400 flex items-center gap-1.5 font-medium">
-                <span className="w-1.5 h-1.5 rounded-full bg-teal-400" />
-                <span>PostGIS Spatial Search</span>
+              <li>
+                <span className="text-forest-400">2-opt Local Search Heuristic</span>
               </li>
-              <li className="text-forest-300 flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-teal-500/60" />
-                <span>Nearest Neighbor + 2-opt</span>
+              <li>
+                <span className="text-forest-400">OSRM Road Geometry</span>
               </li>
-              <li className="text-forest-300 flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-teal-500/60" />
-                <span>OSRM Road Routing</span>
-              </li>
-              <li className="text-forest-300 flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-teal-500/60" />
-                <span>Multi-Dataset Suite</span>
+              <li>
+                <span className="text-forest-400">Stateless JWT Authorization</span>
               </li>
             </ul>
           </div>
 
-          {/* Tech Stack */}
-          <div>
-            <h4 className="text-white font-bold text-sm tracking-wider uppercase mb-4">
-              Tech Stack
-            </h4>
-            <div className="flex flex-wrap gap-1.5 text-xs">
-              {[
-                'React 19',
-                'Tailwind CSS',
-                'Leaflet',
-                'PostgreSQL 17',
-                'PostGIS 3.6',
-                'Prisma ORM',
-                'OSRM API',
-                'Node.js',
-                'Express',
-              ].map((tech) => (
-                <span
-                  key={tech}
-                  className="px-2 py-1 rounded bg-forest-900/90 text-forest-300 border border-forest-800 text-[11px]"
-                >
-                  {tech}
-                </span>
-              ))}
-            </div>
-          </div>
         </div>
 
-        {/* Bottom Bar */}
+        {/* Bottom Credits & Copyright */}
         <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-forest-400">
-          <p className="flex items-center gap-1">
-            <span>© {CURRENT_YEAR} GeoBite. Geospatial Discovery & Route Optimization Platform.</span>
-          </p>
-          <div className="flex items-center gap-4">
-            <button
-              onClick={scrollToTop}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-forest-900 hover:bg-forest-850 text-forest-200 hover:text-white transition-colors cursor-pointer"
-            >
-              <span>Back to top</span>
-              <ArrowUp className="w-3.5 h-3.5 text-teal-400" />
-            </button>
+          <p>© {currentYear} GeoBite Platform. All rights reserved.</p>
+          <div className="flex items-center gap-6">
+            <span>Built with React 19, Express & PostGIS</span>
+            <span className="text-forest-700">•</span>
+            <span className="text-teal-400 font-medium">Zero-Backtrack Travel Routing</span>
           </div>
         </div>
+
       </div>
     </footer>
   );

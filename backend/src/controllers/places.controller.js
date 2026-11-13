@@ -32,19 +32,8 @@ export const getPlaces = async (req, res, next) => {
     // Optional city filter to isolate places belonging to a specific city
     if (city && String(city).trim() !== '' && String(city).toLowerCase() !== 'all') {
       const cityTerm = String(city).trim();
-      if (cityTerm.includes(',')) {
-        const baseCity = cityTerm.split(',')[0].trim();
-        where.OR = [
-          { cityName: { equals: cityTerm, mode: 'insensitive' } },
-          { cityName: { equals: baseCity, mode: 'insensitive' } },
-          { address: { contains: baseCity, mode: 'insensitive' } },
-        ];
-      } else {
-        where.OR = [
-          { cityName: { equals: cityTerm, mode: 'insensitive' } },
-          { address: { contains: cityTerm, mode: 'insensitive' } },
-        ];
-      }
+      const baseCity = cityTerm.includes(',') ? cityTerm.split(',')[0].trim() : cityTerm;
+      where.cityName = { equals: baseCity, mode: 'insensitive' };
     }
 
     // Optional text keyword search across name, description, address
