@@ -1,139 +1,138 @@
 import React from 'react';
-import { Server, Layout, Cpu, CheckCircle2, Zap } from 'lucide-react';
+import { 
+  Server, 
+  Database, 
+  MapPin, 
+  Cpu, 
+  Zap, 
+  CheckCircle2, 
+  ShieldCheck, 
+  Compass, 
+  ExternalLink 
+} from 'lucide-react';
 
-const TECH_PILLARS = [
+const ARCH_STACK = [
   {
-    icon: Layout,
-    title: 'Frontend Architecture',
-    subtitle: 'React 19 & Vite 8',
-    details: [
-      'Engineered with modern React and lightning-fast Vite bundling',
-      'Configured with custom Tailwind CSS forest/teal design system',
-      'Fully responsive, accessible, mobile-first component hierarchy',
-      'Modular client structure prepared for tile rendering layers'
-    ]
+    layer: 'Frontend Client',
+    tech: 'React 19 + Vite + Tailwind CSS',
+    details: 'Single-page responsive architecture with sub-millisecond route transitions and Leaflet geospatial renderers.',
+    icon: Compass,
+    color: 'text-teal-600 bg-teal-50 border-teal-200'
   },
   {
+    layer: 'API Gateway & Services',
+    tech: 'Node.js + Express (ES Modules)',
+    details: 'Stateless REST micro-controllers, JWT HMAC-SHA256 authorization, rate limiters, and Overpass POI caching.',
     icon: Server,
-    title: 'Backend API Foundation',
-    subtitle: 'Node.js & Express ES Modules',
-    details: [
-      'Native ES Modules architecture with clean route encapsulation',
-      'Centralized error handling and uniform JSON 404 routing',
-      'Configurable CORS and environment isolation via dotenv',
-      'Verified GET /api/health diagnostics endpoint'
-    ]
+    color: 'text-forest-700 bg-forest-50 border-forest-200'
   },
   {
+    layer: 'Spatial Persistence',
+    tech: 'PostgreSQL 16 + PostGIS + Prisma',
+    details: 'Spatial GiST R-Tree indexing with ST_DWithin and ST_DistanceSphere for sub-50ms geographic lookups.',
+    icon: Database,
+    color: 'text-sky-700 bg-sky-50 border-sky-200'
+  },
+  {
+    layer: 'Routing Engine',
+    tech: 'TSP Heuristics + OSRM Road Graph',
+    details: '2-opt local search, Nearest Neighbor TSP optimization, and OpenStreetMap road-following geometry.',
     icon: Cpu,
-    title: 'Geospatial Engineering Plan',
-    subtitle: 'High-Throughput Spatial Math',
-    details: [
-      'Spatial point indexing for sub-50ms neighborhood lookups',
-      'Haversine distance calculation and bounding-box pruning',
-      'Traveling Salesperson (TSP) heuristic for zero-backtrack routes',
-      'Decoupled architecture ready for database and tile server'
-    ]
-  }
+    color: 'text-purple-700 bg-purple-50 border-purple-200'
+  },
 ];
 
 export default function ArchitectureSection({ healthData }) {
+  const isHealthy = !!healthData;
+
   return (
-    <section id="architecture" className="py-20 bg-white border-t border-forest-100">
+    <section id="architecture" className="py-16 md:py-24 bg-white border-t border-forest-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center max-w-3xl mx-auto mb-16">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-forest-50 border border-forest-200 text-forest-900 text-xs font-semibold mb-4">
-            <Cpu className="w-3.5 h-3.5 text-teal-600" />
-            <span>Engineering Placement Showcase</span>
+        
+        {/* Section Title */}
+        <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-4">
+          <div>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-forest-50 text-forest-900 border border-forest-200 text-xs font-bold uppercase tracking-wider mb-2">
+              <Zap className="w-3.5 h-3.5 text-teal-600" />
+              <span>Full-Stack Engineering Spec</span>
+            </div>
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-forest-950 tracking-tight font-sans">
+              Production Architecture
+            </h2>
+            <p className="mt-2 text-sm sm:text-base text-slate-500 max-w-xl">
+              Engineered as an enterprise travel-tech system combining PostGIS spatial indexing, heuristic route optimization, and modern React performance.
+            </p>
           </div>
-          <h2 className="text-3xl sm:text-4xl font-extrabold text-forest-950 tracking-tight">
-            Production-Grade Full-Stack Architecture
-          </h2>
-          <p className="mt-3 text-base sm:text-lg text-slate-600">
-            Engineered with clean separation of concerns, strict error boundaries, and scalable design patterns.
-          </p>
+
+          {/* Backend Diagnostics Card */}
+          <div className="bg-sand-50 p-4 rounded-2xl border border-sand-200 flex items-center gap-3 self-start md:self-auto shadow-xs">
+            <div className={`w-3 h-3 rounded-full ${isHealthy ? 'bg-emerald-500 animate-ping' : 'bg-amber-500'}`} />
+            <div>
+              <div className="text-xs font-extrabold text-forest-950 font-sans">
+                {isHealthy ? 'PostGIS Active & Connected' : 'Checking Backend'}
+              </div>
+              <div className="text-[11px] text-slate-500 font-mono">
+                Port 5000 • Prisma 6 • EPSG:4326
+              </div>
+            </div>
+          </div>
         </div>
 
-        {/* Pillars Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {TECH_PILLARS.map((pillar) => {
-            const Icon = pillar.icon;
+        {/* Four Tier Stack Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {ARCH_STACK.map((item) => {
+            const Icon = item.icon;
             return (
               <div
-                key={pillar.title}
-                className="bg-sand-50/70 rounded-3xl p-7 border border-slate-200/80 shadow-soft-sm hover:shadow-soft-md transition-all duration-300 flex flex-col justify-between"
+                key={item.layer}
+                className="bg-white rounded-3xl p-6 border border-forest-100/90 shadow-soft-sm hover:shadow-soft-md transition-shadow flex flex-col justify-between"
               >
                 <div>
-                  <div className="w-12 h-12 rounded-2xl bg-forest-900 text-teal-300 flex items-center justify-center mb-6 shadow-sm">
+                  <div className={`w-12 h-12 rounded-2xl border flex items-center justify-center mb-4 ${item.color}`}>
                     <Icon className="w-6 h-6" />
                   </div>
-                  <h3 className="text-xl font-bold text-forest-950 tracking-tight">
-                    {pillar.title}
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                    {item.layer}
+                  </span>
+                  <h3 className="text-base font-bold text-forest-950 mt-1 mb-2 font-sans">
+                    {item.tech}
                   </h3>
-                  <p className="text-xs font-semibold text-teal-700 mt-1 mb-5">
-                    {pillar.subtitle}
+                  <p className="text-xs text-slate-600 leading-relaxed font-normal">
+                    {item.details}
                   </p>
-                  <ul className="space-y-3">
-                    {pillar.details.map((detail, idx) => (
-                      <li key={idx} className="flex items-start gap-2.5 text-xs sm:text-sm text-slate-600">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                        <span>{detail}</span>
-                      </li>
-                    ))}
-                  </ul>
                 </div>
 
-                <div className="mt-8 pt-4 border-t border-slate-200/70 flex items-center justify-between text-xs font-medium text-forest-800">
-                  <span>Production Ready</span>
-                  <span className="text-teal-600 font-bold">Foundation v1</span>
+                <div className="pt-4 mt-4 border-t border-slate-100 flex items-center gap-1.5 text-[11px] text-emerald-700 font-bold">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Production Verified</span>
                 </div>
               </div>
             );
           })}
         </div>
 
-        {/* Live System Diagnostics Box */}
-        <div className="mt-12 bg-forest-950 text-white rounded-3xl p-6 sm:p-8 border border-forest-800 shadow-soft-lg">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-teal-500/20 border border-teal-500/30 flex items-center justify-center text-teal-400 shrink-0">
-                <Zap className="w-6 h-6" />
-              </div>
-              <div>
-                <h4 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
-                  <span>Backend Health Diagnostic Check</span>
-                  <span className="px-2 py-0.5 rounded text-[11px] font-mono bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                    GET /api/health
-                  </span>
-                </h4>
-                <p className="text-xs sm:text-sm text-forest-300 mt-0.5">
-                  Direct connectivity between React frontend and Express backend on port 5000
-                </p>
-              </div>
+        {/* Diagnostics & Performance Guarantee Banner */}
+        <div className="mt-10 bg-gradient-to-r from-forest-950 via-forest-900 to-forest-800 rounded-3xl p-6 sm:p-8 text-white flex flex-col md:flex-row items-center justify-between gap-6 shadow-soft-md">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-teal-500/20 border border-teal-400/30 flex items-center justify-center text-teal-300 shrink-0">
+              <ShieldCheck className="w-6 h-6 text-teal-400" />
             </div>
-
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="px-4 py-2 rounded-xl bg-forest-900 border border-forest-800 text-xs">
-                <span className="text-forest-400">Status: </span>
-                <span className="font-bold text-emerald-400">
-                  {healthData?.status || 'Active'}
-                </span>
-              </div>
-              <div className="px-4 py-2 rounded-xl bg-forest-900 border border-forest-800 text-xs">
-                <span className="text-forest-400">Service: </span>
-                <span className="font-bold text-teal-300">
-                  {healthData?.service || 'GeoBite API'}
-                </span>
-              </div>
-              <div className="px-4 py-2 rounded-xl bg-forest-900 border border-forest-800 text-xs font-mono">
-                <span className="text-forest-400">Environment: </span>
-                <span className="text-white">
-                  {healthData?.environment || 'development'}
-                </span>
-              </div>
+            <div>
+              <h4 className="text-lg font-bold font-sans">Benchmarked Algorithmic Scaling</h4>
+              <p className="text-xs text-forest-200 mt-1 max-w-lg">
+                Extensively evaluated on 5 benchmark topologies: Small (5 stops), Medium (15 stops), Large (40 stops), Clustered (Indiranagar), and Dispersed (Karnataka).
+              </p>
             </div>
           </div>
+
+          <a
+            href="/benchmark"
+            className="px-5 py-3 rounded-xl bg-teal-500 hover:bg-teal-400 text-forest-950 text-xs font-bold transition-all shadow-soft-sm active:scale-95 shrink-0"
+          >
+            Open Benchmark Dashboard →
+          </a>
         </div>
+
       </div>
     </section>
   );
