@@ -10,11 +10,15 @@ import {
   Maximize2, 
   RotateCcw, 
   Search, 
-  RefreshCw,
-  Route,
-  MapPin
+  RefreshCw, 
+  Route, 
+  MapPin,
+  Share2,
+  ExternalLink,
+  Check
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { sharePlace, openInGoogleMaps } from '../../services/shareUtils';
 
 // Sensible demo fallback center (Bengaluru) when no coordinates are provided
 const DEFAULT_CENTER = [12.9716, 77.5946];
@@ -270,6 +274,19 @@ export default function InteractiveMap({
   const [mapInstance, setMapInstance] = useState(null);
   const [pendingBounds, setPendingBounds] = useState(null);
   const [showSearchAreaBtn, setShowSearchAreaBtn] = useState(false);
+  const [copiedPlaceId, setCopiedPlaceId] = useState(null);
+
+  const handleSharePopup = async (place) => {
+    try {
+      const res = await sharePlace(place);
+      if (res.copied) {
+        setCopiedPlaceId(place.id);
+        setTimeout(() => setCopiedPlaceId(null), 2200);
+      }
+    } catch (err) {
+      console.warn('Popup share error:', err);
+    }
+  };
 
   // Filter places to strictly valid coordinates
   const validPlaces = useMemo(() => {
@@ -534,17 +551,51 @@ export default function InteractiveMap({
                     )}
                   </div>
 
-                  {/* Action row in popup */}
-                  <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
-                    <span className="text-[10px] text-slate-400 font-mono">
-                      {place.latitude.toFixed(3)}°, {place.longitude.toFixed(3)}°
-                    </span>
+                  {/* Action row in popup with Share & Google Maps */}
+                  <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between gap-1.5 flex-wrap">
+                    <div className="flex items-center gap-1">
+                      {/* Share link button */}
+                      <button
+                        type="button"
+                        onClick={() => handleSharePopup(place)}
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border transition-colors cursor-pointer ${
+                          copiedPlaceId === place.id
+                            ? 'bg-emerald-600 text-white border-emerald-600'
+                            : 'bg-white hover:bg-sand-100 text-slate-700 border-sand-200'
+                        }`}
+                        title="Share place or copy link"
+                      >
+                        {copiedPlaceId === place.id ? (
+                          <>
+                            <Check className="w-2.5 h-2.5 text-white" />
+                            <span>Copied!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Share2 className="w-2.5 h-2.5 text-teal-600" />
+                            <span>Share</span>
+                          </>
+                        )}
+                      </button>
+
+                      {/* Google Maps link */}
+                      <button
+                        type="button"
+                        onClick={() => openInGoogleMaps(place)}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-white hover:bg-sand-100 text-slate-700 border border-sand-200 transition-colors cursor-pointer"
+                        title="Open in Google Maps"
+                      >
+                        <ExternalLink className="w-2.5 h-2.5 text-teal-600" />
+                        <span>Maps</span>
+                      </button>
+                    </div>
+
                     <Link
                       to="/route"
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 transition-colors"
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 transition-colors"
                     >
                       <Route className="w-3 h-3 text-teal-600" />
-                      <span>Plan Route</span>
+                      <span>Plan</span>
                     </Link>
                   </div>
                 </div>

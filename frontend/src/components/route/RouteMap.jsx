@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Navigation, Star, Clock, Car, AlertTriangle, Loader2 } from 'lucide-react';
+import { Navigation, Star, Clock, Car, AlertTriangle, Loader2, Share2, ExternalLink, Check } from 'lucide-react';
+import { sharePlace, openInGoogleMaps } from '../../services/shareUtils';
 
 const DEFAULT_CENTER = [12.9716, 77.5946];
 const DEFAULT_ZOOM = 12;
@@ -85,6 +86,19 @@ export default function RouteMap({
   center = null,
 }) {
   const markerRefs = useRef({});
+  const [copiedPlaceId, setCopiedPlaceId] = useState(null);
+
+  const handleSharePopup = async (place) => {
+    try {
+      const res = await sharePlace(place);
+      if (res.copied) {
+        setCopiedPlaceId(place.id);
+        setTimeout(() => setCopiedPlaceId(null), 2200);
+      }
+    } catch (err) {
+      console.warn('Route popup share error:', err);
+    }
+  };
 
   const activeResult = useMemo(() => {
     if (!routeResult) return null;
@@ -285,6 +299,42 @@ export default function RouteMap({
                       </span>
                     </div>
                   )}
+
+                  {/* Share & Google Maps Actions */}
+                  <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => handleSharePopup(place)}
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border transition-colors cursor-pointer ${
+                        copiedPlaceId === place.id
+                          ? 'bg-emerald-600 text-white border-emerald-600'
+                          : 'bg-white hover:bg-sand-100 text-slate-700 border-sand-200'
+                      }`}
+                      title="Share place or copy link"
+                    >
+                      {copiedPlaceId === place.id ? (
+                        <>
+                          <Check className="w-2.5 h-2.5 text-white" />
+                          <span>Copied!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Share2 className="w-2.5 h-2.5 text-teal-600" />
+                          <span>Share</span>
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => openInGoogleMaps(place)}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-white hover:bg-sand-100 text-slate-700 border border-sand-200 transition-colors cursor-pointer"
+                      title="Open in Google Maps"
+                    >
+                      <ExternalLink className="w-2.5 h-2.5 text-teal-600" />
+                      <span>Google Maps</span>
+                    </button>
+                  </div>
                 </div>
               </Popup>
             </Marker>
