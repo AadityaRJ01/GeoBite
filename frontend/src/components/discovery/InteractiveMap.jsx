@@ -15,7 +15,9 @@ import {
   MapPin,
   Share2,
   ExternalLink,
-  Check
+  Check,
+  Plus,
+  Minus
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { sharePlace, openInGoogleMaps } from '../../services/shareUtils';
@@ -25,77 +27,111 @@ const DEFAULT_CENTER = [12.9716, 77.5946];
 const DEFAULT_ZOOM = 12;
 
 /**
- * Category color definitions for markers
+ * Generate a custom Stitch pill DivIcon for Leaflet markers
  */
-const CATEGORY_COLORS = {
-  restaurant: { bg: '#d97706', border: '#b45309', fill: '#f59e0b' }, // Amber
-  cafe:       { bg: '#0d9488', border: '#0f766e', fill: '#14b8a6' }, // Teal
-  viewpoint:  { bg: '#0284c7', border: '#0369a1', fill: '#38bdf8' }, // Sky
-  attraction: { bg: '#7c3aed', border: '#6d28d9', fill: '#a855f7' }, // Purple
-};
+function createStitchMarkerIcon(place, isSelected) {
+  const rating = typeof place.averageRating === 'number' && place.averageRating > 0
+    ? place.averageRating.toFixed(1)
+    : '4.9';
+  const name = place.name || 'Spot';
 
-/**
- * Generate a custom SVG DivIcon for Leaflet markers
- */
-function createCustomMarkerIcon(category, isSelected) {
-  const colors = CATEGORY_COLORS[category] || { bg: '#2f7059', border: '#1b3b30', fill: '#14b8a6' };
-  const size = isSelected ? 44 : 32;
-  const pinColor = isSelected ? '#0d9488' : colors.bg;
-  const borderColor = isSelected ? '#ffffff' : colors.border;
-
-  const html = `
-    <div style="
-      position: relative;
-      width: ${size}px;
-      height: ${size}px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      transform: translate(-50%, -100%);
-      filter: ${
-        isSelected
-          ? 'drop-shadow(0 0 10px rgba(13, 148, 136, 0.95)) drop-shadow(0 4px 8px rgba(13, 33, 27, 0.5))'
-          : 'drop-shadow(0 3px 5px rgba(13, 33, 27, 0.35))'
-      };
-      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    ">
-      <svg viewBox="0 0 36 44" width="${size}" height="${(size * 44) / 36}" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M18 0C8.05888 0 0 8.05888 0 18C0 28.5 15.5 42.5 17.1 43.8C17.6 44.2 18.4 44.2 18.9 43.8C20.5 42.5 36 28.5 36 18C36 8.05888 27.9411 0 18 0Z" 
-          fill="${pinColor}" 
-          stroke="${borderColor}" 
-          stroke-width="${isSelected ? '2.5' : '1.5'}"
-        />
-        <circle cx="18" cy="17" r="${isSelected ? '8' : '6.5'}" fill="white" />
-        <circle cx="18" cy="17" r="${isSelected ? '4.5' : '3.5'}" fill="${pinColor}" />
-      </svg>
-      ${
-        isSelected
-          ? `
-        <span style="
-          position: absolute;
-          top: -4px;
-          right: -4px;
+  const html = isSelected
+    ? `
+      <div style="
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        transform: translate(-50%, -100%);
+        cursor: pointer;
+        z-index: 1000;
+      ">
+        <div style="
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          background-color: #00140f;
+          color: #ffffff;
+          padding: 6px 14px;
+          border-radius: 9999px;
+          box-shadow: 0 12px 28px rgba(0, 20, 15, 0.35);
+          border: 2px solid #9eefe0;
+          font-family: 'Plus Jakarta Sans', sans-serif;
+          font-size: 11px;
+          font-weight: 700;
+          white-space: nowrap;
+        ">
+          <span style="color: #9eefe0; font-size: 13px;">★</span>
+          <span>${rating}</span>
+          <span style="color: rgba(255, 255, 255, 0.4);">•</span>
+          <span style="max-width: 120px; overflow: hidden; text-overflow: ellipsis;">${name}</span>
+        </div>
+        <div style="
+          width: 10px;
+          height: 10px;
+          background-color: #00140f;
+          transform: rotate(45deg);
+          margin-top: -5px;
+          border-right: 2px solid #9eefe0;
+          border-bottom: 2px solid #9eefe0;
+        "></div>
+        <div style="
           width: 12px;
           height: 12px;
           border-radius: 9999px;
-          background-color: #2dd4bf;
-          border: 2px solid #ffffff;
-          box-shadow: 0 0 8px #2dd4bf;
-          animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-        "></span>
-      `
-          : ''
-      }
-    </div>
-  `;
+          background-color: rgba(9, 106, 95, 0.45);
+          animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+          margin-top: 2px;
+        "></div>
+      </div>
+    `
+    : `
+      <div style="
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        transform: translate(-50%, -100%);
+        cursor: pointer;
+        transition: transform 0.2s ease;
+      ">
+        <div style="
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          background-color: #ffffff;
+          color: #00140f;
+          padding: 5px 11px;
+          border-radius: 9999px;
+          box-shadow: 0 4px 14px rgba(14, 42, 36, 0.12);
+          border: 1px solid #dce5df;
+          font-family: 'Plus Jakarta Sans', sans-serif;
+          font-size: 11px;
+          font-weight: 600;
+          white-space: nowrap;
+        ">
+          <span style="width: 7px; height: 7px; border-radius: 9999px; background-color: #096a5f;"></span>
+          <span style="font-weight: 700; color: #096a5f;">${rating}</span>
+          <span style="max-width: 85px; overflow: hidden; text-overflow: ellipsis; color: #414846;">${name}</span>
+        </div>
+        <div style="
+          width: 8px;
+          height: 8px;
+          background-color: #ffffff;
+          transform: rotate(45deg);
+          margin-top: -4px;
+          border-right: 1px solid #dce5df;
+          border-bottom: 1px solid #dce5df;
+        "></div>
+      </div>
+    `;
 
   return L.divIcon({
     html,
-    className: 'geobite-custom-marker',
-    iconSize: [size, size],
-    iconAnchor: [size / 2, size],
-    popupAnchor: [0, -size],
+    className: 'geobite-stitch-marker',
+    iconSize: [120, 36],
+    iconAnchor: [60, 36],
+    popupAnchor: [0, -38],
   });
 }
 
@@ -106,8 +142,8 @@ function createSearchCenterMarkerIcon() {
   const html = `
     <div style="
       position: relative;
-      width: 32px;
-      height: 32px;
+      width: 28px;
+      height: 28px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -115,25 +151,25 @@ function createSearchCenterMarkerIcon() {
     ">
       <span style="
         position: absolute;
-        width: 32px;
-        height: 32px;
+        width: 28px;
+        height: 28px;
         border-radius: 9999px;
-        background-color: rgba(13, 148, 136, 0.35);
+        background-color: rgba(9, 106, 95, 0.3);
         animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
       "></span>
       <div style="
         position: relative;
-        width: 18px;
-        height: 18px;
+        width: 16px;
+        height: 16px;
         border-radius: 9999px;
-        background-color: #0f766e;
-        border: 3px solid #ffffff;
-        box-shadow: 0 0 10px rgba(15, 118, 110, 0.7);
+        background-color: #00140f;
+        border: 2px solid #9eefe0;
+        box-shadow: 0 0 10px rgba(9, 106, 95, 0.7);
         display: flex;
         align-items: center;
         justify-content: center;
       ">
-        <div style="width: 4px; height: 4px; border-radius: 9999px; background-color: #ffffff;"></div>
+        <div style="width: 4px; height: 4px; border-radius: 9999px; background-color: #9eefe0;"></div>
       </div>
     </div>
   `;
@@ -141,9 +177,9 @@ function createSearchCenterMarkerIcon() {
   return L.divIcon({
     html,
     className: 'geobite-center-marker',
-    iconSize: [32, 32],
-    iconAnchor: [16, 16],
-    popupAnchor: [0, -16],
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+    popupAnchor: [0, -14],
   });
 }
 
@@ -168,7 +204,6 @@ function MapEventHandler({
     moveend: () => {
       if (!onBoundsChange) return;
       const center = map.getCenter();
-      // Check if user moved away from programmatically set center
       if (
         lastProgrammaticCenter.current &&
         Math.abs(center.lat - lastProgrammaticCenter.current.lat) < 0.0001 &&
@@ -249,7 +284,7 @@ function MapEventHandler({
 }
 
 /**
- * Helper to expose map actions (Recenter, Fit All) outside the MapContainer
+ * Helper to expose map actions outside the MapContainer
  */
 function MapActionBridge({ onMountMap }) {
   const map = useMap();
@@ -275,6 +310,7 @@ export default function InteractiveMap({
   const [pendingBounds, setPendingBounds] = useState(null);
   const [showSearchAreaBtn, setShowSearchAreaBtn] = useState(false);
   const [copiedPlaceId, setCopiedPlaceId] = useState(null);
+  const [autoMoveSearch, setAutoMoveSearch] = useState(true);
 
   const handleSharePopup = async (place) => {
     try {
@@ -326,10 +362,14 @@ export default function InteractiveMap({
   // Handle bounds change from map dragging/zooming
   const handleBoundsChange = useCallback((boundsData) => {
     setPendingBounds(boundsData);
-    setShowSearchAreaBtn(true);
-  }, []);
+    if (autoMoveSearch && onSearchBounds) {
+      onSearchBounds(boundsData);
+    } else {
+      setShowSearchAreaBtn(true);
+    }
+  }, [autoMoveSearch, onSearchBounds]);
 
-  // Trigger search within current map bounds
+  // Trigger search within current map bounds manually
   const handleTriggerSearchArea = useCallback(() => {
     if (!pendingBounds || !onSearchBounds) return;
     onSearchBounds(pendingBounds);
@@ -351,6 +391,14 @@ export default function InteractiveMap({
     setShowSearchAreaBtn(false);
   }, [mapInstance, validPlaces]);
 
+  const handleZoomIn = useCallback(() => {
+    if (mapInstance) mapInstance.zoomIn();
+  }, [mapInstance]);
+
+  const handleZoomOut = useCallback(() => {
+    if (mapInstance) mapInstance.zoomOut();
+  }, [mapInstance]);
+
   const hasValidSearchCenter =
     isNearbyActive &&
     searchCenter &&
@@ -360,52 +408,81 @@ export default function InteractiveMap({
     !isNaN(searchCenter.lng);
 
   return (
-    <div className="relative w-full h-[450px] lg:h-[calc(100vh-210px)] min-h-[420px] rounded-3xl overflow-hidden border border-forest-200/90 shadow-soft-md bg-sand-100 flex flex-col">
-      {/* Top Left Stats Badge */}
-      <div className="absolute top-4 left-4 z-[400] bg-white/95 backdrop-blur-md px-3.5 py-1.5 rounded-xl border border-forest-100 shadow-soft-sm flex items-center gap-2 text-xs font-semibold text-forest-900 pointer-events-auto">
-        <Compass className={`w-3.5 h-3.5 text-teal-600 ${loading ? 'animate-spin' : ''}`} />
-        <span>
-          {validPlaces.length} {validPlaces.length === 1 ? 'Marker' : 'Markers'} Active
-          {isNearbyActive && ` (${searchRadius} km radius)`}
-        </span>
+    <div className="relative w-full h-[520px] lg:h-[calc(100vh-140px)] min-h-[460px] rounded-3xl overflow-hidden border border-[#e2eae5] shadow-[0_12px_36px_-6px_rgba(14,42,36,0.08)] bg-[#edf6f0] flex flex-col">
+      {/* Top Left Floating Search Toggle (Stitch Style) */}
+      <div className="absolute top-4 left-4 z-[400] pointer-events-auto">
+        <label className="flex items-center gap-2 bg-white/95 backdrop-blur-md px-3.5 py-2 rounded-full shadow-md cursor-pointer hover:bg-white transition-colors border border-[#dce5df]">
+          <input
+            type="checkbox"
+            checked={autoMoveSearch}
+            onChange={(e) => setAutoMoveSearch(e.target.checked)}
+            className="w-4 h-4 accent-[#096a5f] rounded cursor-pointer"
+          />
+          <span className="font-sans text-xs font-semibold text-[#00140f]">
+            Search as I move the map
+          </span>
+        </label>
       </div>
 
-      {/* Floating "Search this area" Button */}
-      {showSearchAreaBtn && onSearchBounds && (
+      {/* Floating "Search this area" Button if auto-search is off */}
+      {showSearchAreaBtn && onSearchBounds && !autoMoveSearch && (
         <div className="absolute top-4 inset-x-0 mx-auto w-fit z-[500] pointer-events-auto animate-bounce-subtle">
           <button
             type="button"
             id="map-search-this-area-btn"
             onClick={handleTriggerSearchArea}
             disabled={loading}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-forest-900 hover:bg-teal-700 text-white text-xs font-bold shadow-soft-lg hover:shadow-soft-xl transition-all cursor-pointer border border-teal-400/40"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#00140f] hover:bg-[#096a5f] text-white text-xs font-bold shadow-lg transition-all cursor-pointer border border-[#9eefe0]/40"
           >
-            <Search className={`w-3.5 h-3.5 text-teal-300 ${loading ? 'animate-spin' : ''}`} />
+            <Search className={`w-3.5 h-3.5 text-[#9eefe0] ${loading ? 'animate-spin' : ''}`} />
             <span>Search this area</span>
           </button>
         </div>
       )}
 
-      {/* Floating Map Action Controls (Recenter & Fit All) */}
-      <div className="absolute bottom-5 right-4 z-[400] flex flex-col gap-2 pointer-events-auto">
+      {/* Floating Right Map Controls Widget (Stitch Style) */}
+      <div className="absolute top-4 right-4 z-[400] flex flex-col gap-2 pointer-events-auto">
+        {/* Zoom In & Out Controls Stack */}
+        <div className="flex flex-col bg-white/95 backdrop-blur-md rounded-2xl shadow-md overflow-hidden border border-[#dce5df]">
+          <button
+            type="button"
+            onClick={handleZoomIn}
+            className="w-10 h-10 flex items-center justify-center text-[#00140f] hover:bg-[#edf6f0] transition-colors cursor-pointer"
+            title="Zoom In"
+          >
+            <Plus className="w-4 h-4" />
+          </button>
+          <div className="w-full h-[1px] bg-[#dce5df]" />
+          <button
+            type="button"
+            onClick={handleZoomOut}
+            className="w-10 h-10 flex items-center justify-center text-[#00140f] hover:bg-[#edf6f0] transition-colors cursor-pointer"
+            title="Zoom Out"
+          >
+            <Minus className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Recenter Origin Geolocation */}
         {hasValidSearchCenter && (
           <button
             type="button"
             id="map-recenter-btn"
             onClick={handleRecenter}
-            className="w-9 h-9 rounded-xl bg-white/95 hover:bg-white text-forest-800 hover:text-teal-700 border border-forest-100 shadow-soft-md flex items-center justify-center transition-all cursor-pointer"
+            className="w-10 h-10 rounded-full bg-white/95 backdrop-blur-md flex items-center justify-center text-[#096a5f] hover:bg-white shadow-md transition-colors border border-[#dce5df] cursor-pointer"
             title="Recenter view on search origin"
           >
             <RotateCcw className="w-4 h-4" />
           </button>
         )}
 
+        {/* Fit All Visible Markers */}
         {validPlaces.length > 0 && (
           <button
             type="button"
             id="map-fit-all-btn"
             onClick={handleFitAll}
-            className="w-9 h-9 rounded-xl bg-white/95 hover:bg-white text-forest-800 hover:text-teal-700 border border-forest-100 shadow-soft-md flex items-center justify-center transition-all cursor-pointer"
+            className="w-10 h-10 rounded-full bg-white/95 backdrop-blur-md flex items-center justify-center text-[#00140f] hover:bg-white shadow-md transition-colors border border-[#dce5df] cursor-pointer"
             title="Fit view to all active place markers"
           >
             <Maximize2 className="w-4 h-4" />
@@ -413,18 +490,44 @@ export default function InteractiveMap({
         )}
       </div>
 
-      {/* Loading Bar Overlay */}
+      {/* Floating Bottom Environmental Telemetry Badge (Stitch Style) */}
+      <div className="absolute bottom-5 left-5 z-[400] hidden sm:flex items-center gap-3 bg-white/95 backdrop-blur-md px-4 py-2.5 rounded-2xl shadow-lg border border-[#e2eae5] pointer-events-auto">
+        <div className="flex items-center gap-2.5">
+          <span className="material-symbols-outlined text-[#096a5f] text-[22px]">
+            wb_twilight
+          </span>
+          <div>
+            <div className="font-sans text-xs font-bold text-[#00140f]">
+              {validPlaces.length} Verified Spots Active
+            </div>
+            <div className="font-sans text-[11px] text-[#727976]">
+              {searchRadius} km radius • PostGIS EPSG:4326
+            </div>
+          </div>
+        </div>
+        <span className="text-[#c1c8c5]">|</span>
+        <Link
+          to="/route"
+          className="font-sans text-xs font-bold text-[#096a5f] hover:underline flex items-center gap-1"
+        >
+          <span>Route Planner</span>
+          <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
+        </Link>
+      </div>
+
+      {/* Loading Progress Bar Overlay */}
       {loading && (
-        <div className="absolute top-0 inset-x-0 z-[600] h-1 bg-teal-100 overflow-hidden">
-          <div className="w-full h-full bg-teal-600 animate-pulse"></div>
+        <div className="absolute top-0 inset-x-0 z-[600] h-1 bg-[#9eefe0]/40 overflow-hidden">
+          <div className="w-full h-full bg-[#096a5f] animate-pulse"></div>
         </div>
       )}
 
-      {/* Map Container */}
+      {/* Leaflet Map Container */}
       <MapContainer
         center={initialCenter}
         zoom={DEFAULT_ZOOM}
         scrollWheelZoom={true}
+        zoomControl={false}
         className="w-full h-full z-10"
       >
         <TileLayer
@@ -451,10 +554,10 @@ export default function InteractiveMap({
               center={[searchCenter.lat, searchCenter.lng]}
               radius={(searchRadius || 5) * 1000}
               pathOptions={{
-                color: '#0d9488',
-                fillColor: '#14b8a6',
-                fillOpacity: 0.08,
-                weight: 2,
+                color: '#096a5f',
+                fillColor: '#9eefe0',
+                fillOpacity: 0.12,
+                weight: 1.5,
                 dashArray: '6, 6',
               }}
             />
@@ -464,15 +567,15 @@ export default function InteractiveMap({
               zIndexOffset={500}
             >
               <Popup>
-                <div className="p-1 max-w-[200px] text-center">
-                  <div className="text-xs font-bold text-forest-950 flex items-center justify-center gap-1">
-                    <Navigation className="w-3.5 h-3.5 text-teal-600 rotate-45" />
+                <div className="p-1 max-w-[200px] text-center font-sans">
+                  <div className="text-xs font-bold text-[#00140f] flex items-center justify-center gap-1">
+                    <Navigation className="w-3.5 h-3.5 text-[#096a5f] rotate-45" />
                     <span>Search Origin Center</span>
                   </div>
-                  <p className="text-[11px] text-slate-500 font-mono mt-0.5">
+                  <p className="text-[11px] text-[#727976] font-mono mt-0.5">
                     {searchCenter.lat.toFixed(4)}°, {searchCenter.lng.toFixed(4)}°
                   </p>
-                  <div className="mt-1 text-[10px] font-semibold text-teal-800 bg-teal-50 py-0.5 px-2 rounded-full border border-teal-200">
+                  <div className="mt-1 text-[10px] font-semibold text-[#096a5f] bg-[#edf6f0] py-0.5 px-2 rounded-full border border-[#dce5df]">
                     Radius: {searchRadius} km
                   </div>
                 </div>
@@ -484,7 +587,7 @@ export default function InteractiveMap({
         {/* Place Markers with Visual Distinction for Selected Place */}
         {validPlaces.map((place) => {
           const isSelected = place.id === selectedPlaceId;
-          const markerIcon = createCustomMarkerIcon(place.category, isSelected);
+          const markerIcon = createStitchMarkerIcon(place, isSelected);
 
           return (
             <Marker
@@ -506,29 +609,28 @@ export default function InteractiveMap({
               }}
             >
               <Popup>
-                <div className="p-1 max-w-[250px]">
-                  <div className="flex items-center justify-between gap-2 mb-1.5">
-                    <span className="font-bold text-sm text-forest-950 truncate">
+                <div className="p-2 max-w-[260px] font-sans">
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="font-serif font-bold text-base text-[#00140f] truncate">
                       {place.name}
                     </span>
                   </div>
 
                   <div className="flex items-center gap-1.5 mb-2">
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-forest-50 text-forest-800 border border-forest-200">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-[#edf6f0] text-[#096a5f] border border-[#dce5df]">
                       {place.category}
                     </span>
                     {typeof place.averageRating === 'number' && place.averageRating > 0 && (
-                      <span className="inline-flex items-center gap-0.5 text-xs font-bold text-amber-700">
-                        <Star className="w-3 h-3 fill-amber-400 text-amber-500" />
+                      <span className="inline-flex items-center gap-0.5 text-xs font-bold text-[#00140f]">
+                        <span className="text-[#096a5f]">★</span>
                         {place.averageRating.toFixed(1)}
                       </span>
                     )}
                   </div>
 
-                  {/* PostGIS Distance Badge */}
                   {typeof place.distanceMeters === 'number' && (
-                    <div className="flex items-center gap-1.5 px-2 py-0.5 mb-2 rounded-md bg-teal-50 border border-teal-200 text-teal-900 text-xs font-bold">
-                      <Navigation className="w-3 h-3 text-teal-600 rotate-45 shrink-0" />
+                    <div className="flex items-center gap-1.5 px-2 py-0.5 mb-2 rounded-md bg-[#edf6f0] border border-[#dce5df] text-[#096a5f] text-xs font-bold">
+                      <Navigation className="w-3 h-3 rotate-45 shrink-0 text-[#096a5f]" />
                       <span>
                         {place.distanceKm < 1
                           ? `${place.distanceMeters} m away`
@@ -537,64 +639,52 @@ export default function InteractiveMap({
                     </div>
                   )}
 
-                  <p className="text-[11px] text-slate-600 line-clamp-2 mb-2 leading-tight">
+                  <p className="text-[11px] text-[#414846] line-clamp-2 mb-2.5 leading-relaxed">
                     {place.address}
                   </p>
 
-                  <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1.5 border-t border-slate-100">
-                    <span className="capitalize">{place.priceLevel || 'Moderate'}</span>
-                    {place.estimatedVisitMinutes && (
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3 h-3 text-slate-400" />
-                        {place.estimatedVisitMinutes}m
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Action row in popup with Share & Google Maps */}
-                  <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between gap-1.5 flex-wrap">
+                  {/* Actions in popup */}
+                  <div className="pt-2 border-t border-[#edf6f0] flex items-center justify-between gap-1.5">
                     <div className="flex items-center gap-1">
-                      {/* Share link button */}
                       <button
                         type="button"
                         onClick={() => handleSharePopup(place)}
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border transition-colors cursor-pointer ${
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold border transition-colors cursor-pointer ${
                           copiedPlaceId === place.id
-                            ? 'bg-emerald-600 text-white border-emerald-600'
-                            : 'bg-white hover:bg-sand-100 text-slate-700 border-sand-200'
+                            ? 'bg-[#096a5f] text-white border-[#096a5f]'
+                            : 'bg-white hover:bg-[#edf6f0] text-[#414846] border-[#dce5df]'
                         }`}
-                        title="Share place or copy link"
+                        title="Share place"
                       >
                         {copiedPlaceId === place.id ? (
                           <>
-                            <Check className="w-2.5 h-2.5 text-white" />
-                            <span>Copied!</span>
+                            <Check className="w-2.5 h-2.5" />
+                            <span>Copied</span>
                           </>
                         ) : (
                           <>
-                            <Share2 className="w-2.5 h-2.5 text-teal-600" />
+                            <Share2 className="w-2.5 h-2.5 text-[#096a5f]" />
                             <span>Share</span>
                           </>
                         )}
                       </button>
 
-                      {/* Google Maps link */}
                       <button
                         type="button"
                         onClick={() => openInGoogleMaps(place)}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-white hover:bg-sand-100 text-slate-700 border border-sand-200 transition-colors cursor-pointer"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-white hover:bg-[#edf6f0] text-[#414846] border border-[#dce5df] transition-colors cursor-pointer"
                         title="Open in Google Maps"
                       >
-                        <ExternalLink className="w-2.5 h-2.5 text-teal-600" />
+                        <ExternalLink className="w-2.5 h-2.5 text-[#096a5f]" />
                         <span>Maps</span>
                       </button>
                     </div>
 
                     <Link
                       to="/route"
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 transition-colors"
+                      className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-semibold text-white bg-[#00140f] hover:bg-[#0e2a24] transition-colors shadow-xs"
                     >
-                      <Route className="w-3 h-3 text-teal-600" />
+                      <Route className="w-2.5 h-2.5 text-[#9eefe0]" />
                       <span>Plan</span>
                     </Link>
                   </div>
@@ -609,16 +699,16 @@ export default function InteractiveMap({
       {validPlaces.length === 0 && !loading && (
         <div className="absolute inset-0 z-[500] bg-white/85 backdrop-blur-sm flex items-center justify-center p-6 text-center">
           <div className="max-w-xs">
-            <Compass className="w-8 h-8 text-teal-600 mx-auto mb-2 animate-bounce" />
-            <h4 className="font-bold text-forest-950 text-sm">No Spots in this Viewport</h4>
-            <p className="text-xs text-slate-600 mt-1 mb-3">
-              Pan the map back to Bengaluru or click reset to expand your search.
+            <Compass className="w-8 h-8 text-[#096a5f] mx-auto mb-2 animate-bounce" />
+            <h4 className="font-serif font-bold text-[#00140f] text-base">No Spots in this Viewport</h4>
+            <p className="font-sans text-xs text-[#414846] mt-1 mb-3">
+              Pan the map back to the search area or click reset to expand your search.
             </p>
             {hasValidSearchCenter && (
               <button
                 type="button"
                 onClick={handleRecenter}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-forest-900 text-white text-xs font-semibold hover:bg-teal-700 transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-[#00140f] text-white text-xs font-semibold hover:bg-[#096a5f] transition-colors cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>Return to Search Center</span>

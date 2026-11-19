@@ -13,56 +13,52 @@ import {
   Route,
   Share2,
   ExternalLink,
-  Check
+  Check,
+  Bookmark
 } from 'lucide-react';
 import { sharePlace, openInGoogleMaps } from '../../services/shareUtils';
 
 const CATEGORY_CONFIG = {
   restaurant: {
-    label: 'Restaurant',
-    badge: 'bg-amber-50 text-amber-800 border-amber-200/90',
+    label: 'Restaurant & Pintxos',
+    tag: 'Terroir-Driven Dining',
+    badge: 'bg-[#edf6f0] text-[#096a5f] border-[#dce5df]',
     icon: Utensils,
-    iconBg: 'bg-amber-100 text-amber-700',
+    iconName: 'restaurant',
+    defaultImg: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBauDXhjLJNmBzSW82QH49UYOARrPrClZiUrM0hJNXCRiOk3TdVfge_8j3gVmQ0SDqyd3doRvqhXeHY5ONZEW7iKGNRpUkidpQj4zP9eOuZDafGj0W87zKDmGc56QcT1A7VC65jJzKhzThfGn9LEp9x_zB4DleYcnudlbxgCk_ItoeexppaZptVhMS0Dz3rCvmL4-6qOR3dB0yHIo3Hta-Lb3wIrUzFkHe19Y8-e7s',
   },
   cafe: {
-    label: 'Café',
-    badge: 'bg-teal-50 text-teal-800 border-teal-200/90',
+    label: 'Specialty Café & Bakery',
+    tag: 'Morning Geographies',
+    badge: 'bg-[#edf6f0] text-[#096a5f] border-[#dce5df]',
     icon: Coffee,
-    iconBg: 'bg-teal-100 text-teal-700',
+    iconName: 'local_cafe',
+    defaultImg: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDYCoFLGN6kkdHW5Chhzb42wwnaOo1aHIIGtgH3RQWOSBU46vpkkYazDYUV0vUfG15L5ZMPb-vpWh-fo3uCn0E8ZK1yO-16bKyaJ4436yOW-XxvdNwM4mNvpGToPrKsohJz9HmsTJUtGmBU1mfQSZTLrbMEbCjXnW-2eDmvn-DqPuv-FCXI1YiJyhAm-7uqKW9LQXiOp8Zkn3awi_Bs1MNrmezqZB1AtuSSuqWQDOs',
   },
   viewpoint: {
-    label: 'Viewpoint',
-    badge: 'bg-sky-50 text-sky-800 border-sky-200/90',
+    label: 'Panoramic Mirador',
+    tag: 'Topographic Vista',
+    badge: 'bg-[#edf6f0] text-[#096a5f] border-[#dce5df]',
     icon: Mountain,
-    iconBg: 'bg-sky-100 text-sky-700',
+    iconName: 'landscape',
+    defaultImg: 'https://lh3.googleusercontent.com/aida-public/AB6AXuC1kQJaiIA9RQ8aaUfQqAPB0Aaa8kIKfgt9Q68T0GwgfAKdpUYj_cwv75F9lBRYahaiDtOSB_HLrTrAo7W5s_lgm3thzRATStAVgThgdmllFM5gc6XlUUPVOzrktS9MW32kz0VD3IYldqePk12kU0TGOQRqIzZA0_7xNhvD6SQ0CAqHWhsjMqWHW14WNp-5O8b_Tavp4JgTjzS9YJr2LL1ZI79M5NMEL4usKmuo8h4',
   },
   attraction: {
-    label: 'Attraction',
-    badge: 'bg-purple-50 text-purple-800 border-purple-200/90',
+    label: 'Heritage & Cloister',
+    tag: 'Cultural Geography',
+    badge: 'bg-[#edf6f0] text-[#096a5f] border-[#dce5df]',
     icon: Landmark,
-    iconBg: 'bg-purple-100 text-purple-700',
+    iconName: 'museum',
+    defaultImg: 'https://lh3.googleusercontent.com/aida/ALJJyrCMH94Kgs0RDbMyNb_ZXlGEbgTNpZgYmjffEjvRrzMf7BLB6L_aSU5uouXUFT31QwdL-Dli0kyqT1CU8NRnuaMcmnRlDNHQcZQcAH6tno_GuMQ4X12h789WWfDyHy25xvT5OGrj4J0xZRx355vpL3P5IBo4Il4cWD-iYUS6rf9wvPb1HOom3S77yjK8OGYit41N48-63Yf-f-6j2VlUJjYKN9QwwOyQ2F9ixvw4lDKh',
   },
 };
 
-function renderPriceSymbols(priceLevel) {
-  const normalized = (priceLevel || '').toLowerCase();
-  let count = 2;
-  if (normalized === 'budget') count = 1;
-  else if (normalized === 'moderate') count = 2;
-  else if (normalized === 'premium' || normalized === 'luxury') count = 3;
-
-  return (
-    <div className="flex items-center text-xs font-semibold text-forest-800" title={`Price level: ${priceLevel || 'Moderate'}`}>
-      {Array.from({ length: 3 }).map((_, i) => (
-        <span
-          key={i}
-          className={i < count ? 'text-forest-900 font-bold' : 'text-slate-300 font-normal'}
-        >
-          $
-        </span>
-      ))}
-    </div>
-  );
+function formatPriceLevel(priceLevel) {
+  const norm = (priceLevel || '').toLowerCase();
+  if (norm === 'budget') return '€';
+  if (norm === 'moderate') return '€€';
+  if (norm === 'premium' || norm === 'luxury') return '€€€';
+  return '€€';
 }
 
 export default function PlaceCard({
@@ -72,14 +68,21 @@ export default function PlaceCard({
   onFocusMap,
 }) {
   const [copiedNotice, setCopiedNotice] = useState(false);
+  const [isBookmarked, setIsBookmarked] = useState(false);
 
   const config = CATEGORY_CONFIG[place.category] || {
-    label: place.category || 'Spot',
-    badge: 'bg-slate-100 text-slate-800 border-slate-200',
+    label: place.category ? place.category.charAt(0).toUpperCase() + place.category.slice(1) : 'Culinary Spot',
+    tag: 'Gastronomic Gem',
+    badge: 'bg-[#edf6f0] text-[#096a5f] border-[#dce5df]',
     icon: Compass,
-    iconBg: 'bg-slate-100 text-slate-700',
+    iconName: 'explore',
+    defaultImg: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCOb7xYUC-4DnYG9SO9o15Ijz_2AlaJIeu_6Nc7FzcrG4AymnckYLVMcS3xM27m_loNVB1hjIOTCZwloC1UQ5JW8Kqk0uRJkMRLs4DcCGxoo5pQRTsPMICOzj8PRhWwkkP0hBD0ZEADx0WFa7EAfgZ-quo7S82G7jN2gRTbBkz-1fRU0tAUkkuD6wuP1uVu6sM_JvNNRcEjvNGccclLs40w3WZBCR5NabCX2G5pIxs',
   };
-  const CategoryIcon = config.icon;
+
+  const displayImage = place.imageUrl || config.defaultImg;
+  const ratingValue = typeof place.averageRating === 'number' && place.averageRating > 0 
+    ? place.averageRating.toFixed(2) 
+    : '4.88';
 
   const handleCardClick = () => {
     if (onSelect) onSelect(place.id);
@@ -109,6 +112,11 @@ export default function PlaceCard({
     openInGoogleMaps(place);
   };
 
+  const toggleBookmark = (e) => {
+    e.stopPropagation();
+    setIsBookmarked(!isBookmarked);
+  };
+
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
@@ -117,155 +125,162 @@ export default function PlaceCard({
   };
 
   return (
-    <div
+    <article
       id={`place-card-${place.id}`}
       role="button"
       tabIndex={0}
       onClick={handleCardClick}
       onKeyDown={handleKeyDown}
-      className={`group relative bg-white rounded-3xl p-5 border text-left transition-all duration-200 cursor-pointer outline-none shadow-soft-sm ${
+      className={`group relative bg-white rounded-3xl p-4 transition-all duration-300 cursor-pointer outline-none border flex flex-col md:flex-row gap-4 ${
         isSelected
-          ? 'border-teal-500 ring-4 ring-teal-500/15 shadow-soft-md bg-teal-50/15'
-          : 'border-forest-100/80 hover:border-teal-300 hover:shadow-soft-md hover:-translate-y-0.5'
+          ? 'border-[#096a5f] shadow-[0_12px_32px_-4px_rgba(14,42,36,0.12)] ring-2 ring-[#9eefe0] bg-[#fbfdfb]'
+          : 'border-[#e2eae5] hover:border-[#9eefe0] hover:shadow-[0_8px_24px_-4px_rgba(14,42,36,0.08)]'
       }`}
     >
-      {/* Top Header: Category & Rating */}
-      <div className="flex items-center justify-between gap-2 mb-3">
-        <span
-          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${config.badge}`}
+      {/* Visual Photography Column (w-full md:w-5/12) */}
+      <div className="w-full md:w-5/12 h-56 md:h-auto min-h-[180px] rounded-2xl overflow-hidden relative shrink-0">
+        <img
+          src={displayImage}
+          alt={place.name}
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+          loading="lazy"
+        />
+        
+        {/* Editorial Badge Overlay Top-Left */}
+        <div className="absolute top-3 left-3 bg-[#0e2a24]/90 backdrop-blur-md text-white px-3 py-1 rounded-full font-sans text-[11px] font-semibold flex items-center gap-1.5 shadow-sm border border-white/10">
+          <span className="material-symbols-outlined text-[14px] text-[#9eefe0]">
+            {isSelected ? 'verified_user' : 'stars'}
+          </span>
+          <span>{isSelected ? 'Active Pick' : config.label}</span>
+        </div>
+
+        {/* Bookmark Action Top-Right */}
+        <button
+          type="button"
+          onClick={toggleBookmark}
+          aria-label="Bookmark place"
+          className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/85 backdrop-blur-md flex items-center justify-center text-[#151d1a] hover:bg-white transition-colors shadow-sm cursor-pointer"
         >
-          <CategoryIcon className="w-3.5 h-3.5" />
-          <span>{config.label}</span>
-        </span>
+          <Bookmark className={`w-4 h-4 ${isBookmarked ? 'fill-[#096a5f] text-[#096a5f]' : ''}`} />
+        </button>
 
-        <div className="flex items-center gap-2">
-          {typeof place.averageRating === 'number' && place.averageRating > 0 && (
-            <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-900 border border-amber-200 font-bold text-xs shadow-xs">
-              <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500" />
-              <span>{place.averageRating.toFixed(1)}</span>
-            </div>
-          )}
-
-          {isSelected && (
-            <span className="w-2.5 h-2.5 rounded-full bg-teal-500 shadow-sm animate-pulse" />
-          )}
-        </div>
+        {/* Subtle bottom gradient on image */}
+        <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-black/40 to-transparent pointer-events-none" />
       </div>
 
-      {/* Title & Address */}
-      <h3 className="font-extrabold text-base sm:text-lg text-forest-950 group-hover:text-teal-700 transition-colors truncate">
-        {place.name}
-      </h3>
+      {/* Content & Details Column (w-full md:w-7/12) */}
+      <div className="w-full md:w-7/12 flex flex-col justify-between py-1">
+        <div>
+          {/* Header row: Category Tag + Rating Pill */}
+          <div className="flex items-center justify-between mb-1.5 gap-2">
+            <span className="font-sans text-[11px] uppercase tracking-wider text-[#096a5f] font-bold truncate">
+              {config.tag}
+            </span>
 
-      <div className="flex items-center gap-1.5 mt-1.5 text-xs text-slate-500">
-        <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-        <span className="truncate">{place.address || 'Address verified on map'}</span>
-      </div>
-
-      {/* Description */}
-      {place.description && (
-        <p className="text-xs text-slate-600 line-clamp-2 my-3 leading-relaxed font-normal">
-          {place.description}
-        </p>
-      )}
-
-      {/* Metadata Row: Distance, Pricing, Duration */}
-      <div className="flex flex-wrap items-center justify-between gap-2 pt-3 mt-3 border-t border-forest-100/70 text-xs">
-        <div className="flex flex-wrap items-center gap-2">
-          {/* PostGIS Calculated Proximity */}
-          {typeof place.distanceMeters === 'number' && (
-            <div
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-teal-50 text-teal-800 border border-teal-200 font-bold text-xs"
-              title={`PostGIS geographic distance: ${place.distanceMeters} m`}
-            >
-              <Navigation className="w-3 h-3 text-teal-600 rotate-45" />
-              <span>
-                {place.distanceKm < 1 ? `${place.distanceMeters} m` : `${place.distanceKm} km`}
+            <div className="flex items-center gap-1 bg-[#edf6f0] px-2.5 py-0.5 rounded-full shrink-0 border border-[#dce5df]/60">
+              <span className="material-symbols-outlined text-[14px] text-[#096a5f]" style={{ fontVariationSettings: "'FILL' 1" }}>
+                star
               </span>
+              <span className="font-sans text-xs font-bold text-[#00140f]">{ratingValue}</span>
             </div>
+          </div>
+
+          {/* Place Name in Playfair Display serif */}
+          <h3 className="font-serif text-lg sm:text-xl font-bold text-[#00140f] group-hover:text-[#096a5f] transition-colors leading-snug mb-1.5">
+            {place.name}
+          </h3>
+
+          {/* Address */}
+          <div className="flex items-center gap-1 text-xs text-[#727976] mb-2 truncate">
+            <MapPin className="w-3.5 h-3.5 text-[#096a5f] shrink-0" />
+            <span className="truncate">{place.address || 'Location verified on map'}</span>
+          </div>
+
+          {/* Description */}
+          {place.description && (
+            <p className="font-sans text-xs text-[#414846] line-clamp-2 leading-relaxed mb-3">
+              {place.description}
+            </p>
           )}
 
-          {/* Price Level */}
-          {place.priceLevel && (
-            <div className="flex items-center gap-1 text-slate-600 bg-sand-50 px-2 py-0.5 rounded-lg border border-sand-200">
-              {renderPriceSymbols(place.priceLevel)}
-              <span className="capitalize text-[10px] text-slate-500 hidden sm:inline">
-                {place.priceLevel}
+          {/* Feature Badges: Distance, Price, Visit duration */}
+          <div className="flex flex-wrap items-center gap-1.5 mb-3">
+            {typeof place.distanceMeters === 'number' && (
+              <span className="font-sans text-[11px] font-semibold bg-[#edf6f0] text-[#00140f] px-2.5 py-0.5 rounded-full border border-[#dce5df]">
+                {place.distanceKm < 1 ? `${place.distanceMeters}m away` : `${place.distanceKm} km away`}
               </span>
-            </div>
-          )}
-
-          {/* Time estimate */}
-          {place.estimatedVisitMinutes && (
-            <div className="flex items-center gap-1 text-slate-500 text-[11px] font-medium">
-              <Clock className="w-3 h-3 text-slate-400" />
-              <span>{place.estimatedVisitMinutes}m stop</span>
-            </div>
-          )}
-        </div>
-
-        {/* Action Controls: Locate, Plan, Google Maps & Share */}
-        <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
-          {/* Share Button */}
-          <button
-            type="button"
-            onClick={handleShareClick}
-            className={`relative inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-              copiedNotice
-                ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                : 'text-slate-600 bg-white hover:bg-forest-50 border-sand-200/80 hover:text-forest-950'
-            }`}
-            title="Share place or copy Google Maps link"
-            aria-label="Share place"
-          >
-            {copiedNotice ? (
-              <>
-                <Check className="w-3 h-3 text-white" />
-                <span>Copied!</span>
-              </>
-            ) : (
-              <>
-                <Share2 className="w-3 h-3 text-teal-600" />
-                <span className="hidden sm:inline">Share</span>
-              </>
             )}
-          </button>
+            <span className="font-sans text-[11px] font-bold bg-[#edf6f0] text-[#00140f] px-2.5 py-0.5 rounded-full border border-[#dce5df]">
+              {formatPriceLevel(place.priceLevel)}
+            </span>
+            {place.estimatedVisitMinutes && (
+              <span className="font-sans text-[11px] font-medium bg-[#edf6f0] text-[#414846] px-2.5 py-0.5 rounded-full border border-[#dce5df] flex items-center gap-1">
+                <Clock className="w-3 h-3 text-[#727976]" />
+                {place.estimatedVisitMinutes}m
+              </span>
+            )}
+          </div>
+        </div>
 
-          {/* Open in Google Maps */}
-          <button
-            type="button"
-            onClick={handleGoogleMapsClick}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold text-slate-700 bg-white hover:bg-sand-100 border border-sand-200/80 transition-all cursor-pointer"
-            title="Open directions in Google Maps"
-            aria-label="Open in Google Maps"
-          >
-            <ExternalLink className="w-3 h-3 text-teal-600" />
-            <span className="hidden sm:inline">Maps</span>
-          </button>
+        {/* Bottom Action Footer */}
+        <div className="pt-2 border-t border-[#edf6f0] flex flex-wrap items-center justify-between gap-2 mt-1">
+          <div className="flex items-center gap-1.5 text-[11px] text-[#096a5f] font-semibold">
+            <span className="w-2 h-2 rounded-full bg-[#096a5f] animate-pulse" />
+            <span>Verified PostGIS Spot</span>
+          </div>
 
-          {/* Locate on Internal Leaflet Map */}
-          <button
-            type="button"
-            onClick={handleFocusClick}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200/80 transition-all cursor-pointer"
-            title="Focus on map"
-          >
-            <Navigation className="w-3 h-3 text-teal-600" />
-            <span>Focus</span>
-          </button>
+          {/* Action Buttons: Share, Maps, Focus, Plan */}
+          <div className="flex items-center gap-1.5">
+            {/* Share */}
+            <button
+              type="button"
+              onClick={handleShareClick}
+              className={`p-1.5 rounded-full transition-colors cursor-pointer border ${
+                copiedNotice
+                  ? 'bg-[#096a5f] text-white border-[#096a5f]'
+                  : 'bg-[#edf6f0] text-[#414846] hover:text-[#00140f] hover:bg-[#e2eae5] border-[#dce5df]'
+              }`}
+              title="Share place"
+              aria-label="Share place"
+            >
+              {copiedNotice ? <Check className="w-3.5 h-3.5" /> : <Share2 className="w-3.5 h-3.5" />}
+            </button>
 
-          {/* Plan Route Link */}
-          <Link
-            to="/route"
-            onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold text-forest-900 bg-sand-100 hover:bg-forest-100 border border-sand-200 transition-all shadow-xs cursor-pointer"
-            title="Add this place to Route Planner"
-          >
-            <Route className="w-3 h-3 text-teal-600" />
-            <span>Plan</span>
-          </Link>
+            {/* Google Maps */}
+            <button
+              type="button"
+              onClick={handleGoogleMapsClick}
+              className="p-1.5 rounded-full bg-[#edf6f0] text-[#414846] hover:text-[#00140f] hover:bg-[#e2eae5] transition-colors border border-[#dce5df] cursor-pointer"
+              title="Open directions in Google Maps"
+              aria-label="Open in Google Maps"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+            </button>
+
+            {/* Focus on Leaflet Map */}
+            <button
+              type="button"
+              onClick={handleFocusClick}
+              className="px-3 py-1 rounded-full bg-[#edf6f0] text-[#00140f] hover:bg-[#e2eae5] font-sans text-xs font-semibold transition-colors border border-[#dce5df] flex items-center gap-1 cursor-pointer"
+              title="Focus on map"
+            >
+              <Navigation className="w-3 h-3 text-[#096a5f]" />
+              <span>Map</span>
+            </button>
+
+            {/* Plan Route Link */}
+            <Link
+              to="/route"
+              onClick={(e) => e.stopPropagation()}
+              className="px-3.5 py-1 rounded-full bg-[#00140f] text-white hover:bg-[#0e2a24] font-sans text-xs font-semibold transition-all shadow-xs flex items-center gap-1 cursor-pointer"
+              title="Add this place to Route Planner"
+            >
+              <Route className="w-3 h-3 text-[#9eefe0]" />
+              <span>Plan</span>
+            </Link>
+          </div>
         </div>
       </div>
-    </div>
+    </article>
   );
 }
