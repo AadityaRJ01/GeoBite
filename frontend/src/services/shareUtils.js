@@ -121,3 +121,4 @@ export async function sharePlace(place) {
   window.prompt('Copy link to share:', url);
   return { shared: false, copied: true, url };
 }
+
