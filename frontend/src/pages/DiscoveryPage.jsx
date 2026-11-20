@@ -1,41 +1,38 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Link, useLocation, useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { 
-  Compass, 
-  ListFilter, 
-  Map as MapIcon, 
   Sparkles, 
-  ArrowLeft,
   RefreshCw,
   Route,
-  BarChart2,
   MapPin,
-  Search
+  Search,
+  CheckCircle2,
+  Lightbulb
 } from 'lucide-react';
 import { fetchNearbyPlaces, fetchPlacesInBounds, fetchHealth, discoverCity, searchLocation } from '../services/placesApi';
-import DiscoveryControls from '../components/discovery/DiscoveryControls';
-import NearbySearchControl from '../components/discovery/NearbySearchControl';
+import DiscoverySubheader from '../components/discovery/DiscoverySubheader';
 import PlaceList from '../components/discovery/PlaceList';
 import InteractiveMap from '../components/discovery/InteractiveMap';
 import { LoadingSkeleton, ErrorState } from '../components/discovery/StateViews';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 
-// Default discovery center: Bengaluru coordinates
-const DEFAULT_LAT = 12.9716;
-const DEFAULT_LNG = 77.5946;
-const DEFAULT_RADIUS = 15;
+// Default discovery center: San Sebastián / Bengaluru coordinates
+const DEFAULT_LAT = 43.3183;
+const DEFAULT_LNG = -1.9812;
+const DEFAULT_RADIUS = 5;
 const PAGE_SIZE = 6;
 
 const POPULAR_CITIES = [
+  'San Sebastián',
+  'Kyoto',
+  'Copenhagen',
   'Mumbai',
   'Delhi',
   'Bengaluru',
   'Tokyo',
   'London',
   'Paris',
-  'New York',
-  'San Francisco',
   'Zürich',
   'Jaipur',
 ];
@@ -63,7 +60,7 @@ export default function DiscoveryPage() {
     const initialLat = !isNaN(parsedLat) && parsedLat >= -90 && parsedLat <= 90 ? parsedLat : DEFAULT_LAT;
     const initialLng = !isNaN(parsedLng) && parsedLng >= -180 && parsedLng <= 180 ? parsedLng : DEFAULT_LNG;
     const initialRadius = !isNaN(parsedRadius) && parsedRadius > 0 ? parsedRadius : DEFAULT_RADIUS;
-    const initialCity = qCity || sCity || (initialLat === DEFAULT_LAT && initialLng === DEFAULT_LNG ? 'Bengaluru, India' : '');
+    const initialCity = qCity || sCity || (initialLat === DEFAULT_LAT && initialLng === DEFAULT_LNG ? 'San Sebastián, Spain' : 'Bengaluru, India');
 
     return { initialLat, initialLng, initialRadius, initialCity };
   };
@@ -75,7 +72,7 @@ export default function DiscoveryPage() {
   const [lng, setLng] = useState(initialValues.initialLng);
   const [radius, setRadius] = useState(initialValues.initialRadius);
   const [cityName, setCityName] = useState(initialValues.initialCity);
-  const [cityInput, setCityInput] = useState(initialValues.initialCity || 'Bengaluru, India');
+  const [cityInput, setCityInput] = useState(initialValues.initialCity || 'San Sebastián, Spain');
 
   // Multi-criteria Filter State
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -103,8 +100,8 @@ export default function DiscoveryPage() {
   const [selectedPlaceId, setSelectedPlaceId] = useState(null);
   const [focusTarget, setFocusTarget] = useState(null);
 
-  // Mobile View Switcher (either list or map)
-  const [mobileTab, setMobileTab] = useState('list'); // 'list' | 'map'
+  // View Mode: 'split' | 'list' | 'map'
+  const [viewMode, setViewMode] = useState('split');
 
   // Backend Health Status
   const [backendStatus, setBackendStatus] = useState({ online: false, data: null });
@@ -182,7 +179,7 @@ export default function DiscoveryPage() {
     handleSelectCity(cityInput.trim());
   }, [cityInput, handleSelectCity]);
 
-  // Synchronize state when query params or location state change (e.g., in-app navigation)
+  // Synchronize state when query params or location state change
   useEffect(() => {
     const qLat = searchParams.get('lat');
     const qLng = searchParams.get('lng');
@@ -214,7 +211,6 @@ export default function DiscoveryPage() {
       if (city) setCityInput(city);
       setPage(1);
 
-      // If a non-Bengaluru city is selected, always trigger discovery to guarantee places & live map sync
       if (city && !city.toLowerCase().includes('bengaluru')) {
         triggerCityDiscovery(city);
       }
@@ -238,7 +234,6 @@ export default function DiscoveryPage() {
     setLoading(true);
     setError(null);
 
-    // Map UI sort identifier to backend parameters
     let apiSortBy = 'distance';
     let apiSortOrder = 'asc';
     if (sortBy === 'rating-desc') {
@@ -268,12 +263,11 @@ export default function DiscoveryPage() {
         query: searchQuery && searchQuery.trim() ? searchQuery.trim() : undefined,
       });
 
-      // Discard if a newer request was dispatched while waiting
       if (requestId !== activeRequestIdRef.current) return;
 
       const loadedPlaces = result.places || [];
 
-      // Auto-Discovery Fallback: If 0 places exist in database for this city, automatically discover from OpenStreetMap
+      // Auto-Discovery Fallback: If 0 places exist in database for this city, automatically discover from Overpass
       if (
         loadedPlaces.length === 0 &&
         cityName &&
@@ -287,7 +281,7 @@ export default function DiscoveryPage() {
         return;
       }
 
-      // Keyword City Smart-Redirect: If user typed a city name in the keyword search bar, switch to that city
+      // Keyword City Smart-Redirect
       if (
         loadedPlaces.length === 0 &&
         searchQuery &&
@@ -324,7 +318,6 @@ export default function DiscoveryPage() {
         });
       }
 
-      // Default select the top place if none selected or previous selection is gone
       if (loadedPlaces.length > 0) {
         setSelectedPlaceId((prev) => {
           const exists = loadedPlaces.some((p) => p.id === prev);
@@ -371,26 +364,11 @@ export default function DiscoveryPage() {
     };
   }, []);
 
-  // Spatial search submit handler from NearbySearchControl
-  const handleNearbySearch = useCallback(({ lat: newLat, lng: newLng, radius: newRadius, category: newCategory, cityName: newCityName }) => {
-    setLat(newLat);
-    setLng(newLng);
-    setRadius(newRadius);
-    if (newCityName) {
-      setCityName(newCityName);
-    }
-    if (newCategory) {
-      setSelectedCategory(newCategory);
-    }
-    setPage(1);
-  }, []);
-
-  // Reset to default Bengaluru coordinates and radius
   const handleClearNearby = useCallback(() => {
     setLat(DEFAULT_LAT);
     setLng(DEFAULT_LNG);
     setRadius(DEFAULT_RADIUS);
-    setCityName('Bengaluru, India');
+    setCityName('San Sebastián, Spain');
     setSelectedCategory('all');
     setMinRating('');
     setMaxPrice('');
@@ -399,7 +377,6 @@ export default function DiscoveryPage() {
     setPage(1);
   }, []);
 
-  // Filter change handlers (all reset page to 1)
   const handleCategoryChange = useCallback((newCategory) => {
     setSelectedCategory(newCategory);
     setPage(1);
@@ -424,9 +401,13 @@ export default function DiscoveryPage() {
     setPage(newPage);
   }, []);
 
-  // Search query handler — resets to page 1 on every new keyword
   const handleSearchQueryChange = useCallback((newQuery) => {
     setSearchQuery(newQuery);
+    setPage(1);
+  }, []);
+
+  const handleRadiusChange = useCallback((newRadius) => {
+    setRadius(newRadius);
     setPage(1);
   }, []);
 
@@ -461,7 +442,6 @@ export default function DiscoveryPage() {
           totalPages: 1,
         });
 
-        // Synchronize search center with the visible map center
         if (center && typeof center.lat === 'number' && typeof center.lng === 'number') {
           setLat(Number(center.lat.toFixed(4)));
           setLng(Number(center.lng.toFixed(4)));
@@ -485,11 +465,8 @@ export default function DiscoveryPage() {
     [selectedCategory, minRating, maxPrice, searchQuery]
   );
 
-  // Backend handles keyword filtering; no client-side text filter needed.
-  // filteredPlaces is an alias for places to preserve the existing prop interface.
   const filteredPlaces = places;
 
-  // Selection handlers
   const handleSelectPlace = useCallback((id) => {
     setSelectedPlaceId(id);
     const target = places.find((p) => p.id === id);
@@ -501,22 +478,21 @@ export default function DiscoveryPage() {
   const handleFocusMap = useCallback((place) => {
     setSelectedPlaceId(place.id);
     setFocusTarget(place);
-    setMobileTab('map');
-  }, []);
+    if (viewMode === 'list') {
+      setViewMode('split');
+    }
+  }, [viewMode]);
 
   const isFiltered =
     Boolean(searchQuery.trim()) ||
     selectedCategory !== 'all' ||
     Boolean(minRating) ||
     Boolean(maxPrice) ||
-    sortBy !== 'distance-asc' ||
-    lat !== DEFAULT_LAT ||
-    lng !== DEFAULT_LNG ||
-    radius !== DEFAULT_RADIUS;
+    sortBy !== 'distance-asc';
 
   return (
-    <div className="min-h-screen flex flex-col bg-sand-50 selection:bg-teal-500 selection:text-white">
-      {/* Unified Top Header / Navigation */}
+    <div className="min-h-screen flex flex-col bg-[#f3fbf6] text-[#151d1a] selection:bg-[#9eefe0] selection:text-[#00140f]">
+      {/* Top Navigation */}
       <Navbar
         healthStatus={backendStatus}
         pageTag="Discovery"
@@ -525,226 +501,153 @@ export default function DiscoveryPage() {
             type="button"
             onClick={fetchPlacesData}
             disabled={loading}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-forest-800 bg-sand-100 hover:bg-sand-200 border border-sand-200 transition-colors disabled:opacity-50 cursor-pointer shadow-soft-sm"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-[#00140f] bg-[#edf6f0] hover:bg-[#e2eae5] border border-[#dce5df] transition-colors disabled:opacity-50 cursor-pointer shadow-xs"
             title="Refresh places from backend"
           >
-            <RefreshCw className={`w-3.5 h-3.5 text-teal-600 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 text-[#096a5f] ${loading ? 'animate-spin' : ''}`} />
             <span className="hidden sm:inline">Refresh</span>
           </button>
         }
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        {/* Title Strip */}
-        <div className="mb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
-          <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-forest-50 border border-forest-200 text-forest-800 text-xs font-semibold mb-2">
-              <Sparkles className="w-3.5 h-3.5 text-teal-600" />
-              <span>PostGIS Geospatial Discovery</span>
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-forest-950 tracking-tight">
-              Explore {cityName ? `${cityName}` : 'Verified Spots'}
-            </h1>
-            <p className="text-sm text-slate-600 mt-1 max-w-2xl">
-              Live spatial distance calculations powered by PostgreSQL and PostGIS GiST indexing. Filter by radius, category, rating, budget, and sort deterministically.
-            </p>
-          </div>
-
-          {/* Action: Plan Route in current city */}
-          <div className="flex items-center gap-3">
-            <Link
-              to={`/route?city=${encodeURIComponent(cityName || 'Bengaluru')}`}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-forest-900 hover:bg-forest-800 text-teal-300 font-bold text-xs sm:text-sm shadow-soft-sm hover:shadow-soft-md transition-all active:scale-95 cursor-pointer"
-              title={`Open Route Planner for ${cityName || 'current city'}`}
-            >
-              <Route className="w-4 h-4 text-teal-400" />
-              <span>Plan Route in {cityName || 'City'}</span>
-            </Link>
-          </div>
-        </div>
-
-        {/* Dynamic Global City Switcher Bar */}
-        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 p-4 bg-white rounded-3xl border border-forest-100 shadow-soft-sm mb-6">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <div className="flex items-center gap-2">
-              <MapPin className="w-4 h-4 text-teal-600 shrink-0" />
-              <span className="text-xs font-bold text-slate-500">Active City:</span>
-              <span className="text-xs font-extrabold px-3 py-1 rounded-full bg-forest-900 text-teal-300 shadow-sm">
-                {cityName || 'Bengaluru, India'}
-              </span>
-            </div>
-            {discoveringCity && (
-              <span className="text-[11px] text-teal-700 font-semibold animate-pulse flex items-center gap-1.5 ml-1">
-                <RefreshCw className="w-3.5 h-3.5 animate-spin text-teal-600" />
-                Discovering OSM places...
-              </span>
-            )}
-          </div>
-
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
-            {/* Quick city pills */}
-            <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
-              {POPULAR_CITIES.map((c) => {
-                const isActive = (cityName || '').toLowerCase().includes(c.toLowerCase());
-                return (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => handleSelectCity(c)}
-                    disabled={discoveringCity}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
-                      isActive
-                        ? 'bg-teal-500 text-forest-950 font-bold shadow-soft-sm'
-                        : 'bg-sand-100 hover:bg-forest-100 text-slate-700 hover:text-forest-900'
-                    }`}
-                  >
-                    {c}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Dynamic city search form */}
-            <form onSubmit={handleCityInputSubmit} className="flex items-center gap-1.5">
-              <div className="relative flex-1 sm:w-48">
-                <input
-                  type="text"
-                  value={cityInput}
-                  onChange={(e) => setCityInput(e.target.value)}
-                  placeholder="Type any city..."
-                  className="w-full pl-7 pr-2.5 py-1.5 bg-sand-50 rounded-xl text-xs text-forest-950 border border-sand-200 focus:outline-none focus:border-teal-500 focus:bg-white transition-all font-medium"
-                />
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
-              </div>
-              <button
-                type="submit"
-                disabled={discoveringCity || !cityInput.trim()}
-                className="px-3 py-1.5 rounded-xl bg-forest-900 hover:bg-forest-800 disabled:opacity-50 text-teal-300 text-xs font-bold transition-all cursor-pointer shrink-0"
-              >
-                Go
-              </button>
-            </form>
-          </div>
-        </div>
-
-        {/* OSM Discovery Notice Banner */}
-        {discoveringCity && (
-          <div className="mb-5 p-3.5 rounded-2xl bg-teal-50 border border-teal-200 text-teal-900 flex items-center gap-2.5 text-xs font-semibold animate-pulse shadow-soft-sm">
-            <RefreshCw className="w-4 h-4 text-teal-600 animate-spin shrink-0" />
-            <span>Discovering real local spots in <strong>{cityName}</strong> via OpenStreetMap Overpass API...</span>
-          </div>
-        )}
-
-          {/* Mobile View Toggle */}
-          <div className="flex lg:hidden bg-sand-200/70 p-1 rounded-2xl w-full sm:w-auto self-start">
-            <button
-              type="button"
-              onClick={() => setMobileTab('list')}
-              className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                mobileTab === 'list'
-                  ? 'bg-white text-forest-950 shadow-soft-sm'
-                  : 'text-forest-700 hover:text-forest-900'
-              }`}
-            >
-              <ListFilter className="w-3.5 h-3.5" />
-              <span>Places ({filteredPlaces.length})</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setMobileTab('map')}
-              className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                mobileTab === 'map'
-                  ? 'bg-white text-forest-950 shadow-soft-sm'
-                  : 'text-forest-700 hover:text-forest-900'
-              }`}
-            >
-              <MapIcon className="w-3.5 h-3.5" />
-              <span>Map View</span>
-            </button>
-          </div>
-
-        {/* PostGIS Nearby Search Control */}
-        <NearbySearchControl
-          onSearchNearby={handleNearbySearch}
-          onClearNearby={handleClearNearby}
-          isNearbyActive={true}
-          activeParams={{ lat, lng, radius, cityName, category: selectedCategory !== 'all' ? selectedCategory : undefined }}
-          activeResultCount={pagination.total || places.length}
-          loading={loading}
+      <main className="w-full pt-20 bg-[#f3fbf6] flex-1 flex flex-col">
+        {/* Discovery Sub-header & Filtering Hub (Google Stitch Style) */}
+        <DiscoverySubheader
+          cityName={cityName}
+          cityInput={cityInput}
+          setCityInput={setCityInput}
+          onCitySubmit={handleCityInputSubmit}
+          onSelectCity={handleSelectCity}
+          popularCities={POPULAR_CITIES}
+          discoveringCity={discoveringCity}
+          searchQuery={searchQuery}
+          onSearchQueryChange={handleSearchQueryChange}
           selectedCategory={selectedCategory}
           onCategoryChange={handleCategoryChange}
+          radius={radius}
+          onRadiusChange={handleRadiusChange}
+          minRating={minRating}
+          onMinRatingChange={handleMinRatingChange}
+          maxPrice={maxPrice}
+          onMaxPriceChange={handleMaxPriceChange}
+          sortBy={sortBy}
+          onSortChange={handleSortChange}
+          onResetFilters={handleClearNearby}
+          isFiltered={isFiltered}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          totalCount={pagination.total || places.length}
         />
 
-        {/* Discovery Controls (Search, Rating, Budget, Category Pills, Sort) */}
-        <div className="mb-6">
-          <DiscoveryControls
-            searchQuery={searchQuery}
-            onSearchChange={handleSearchQueryChange}
-            selectedCategory={selectedCategory}
-            onCategoryChange={handleCategoryChange}
-            minRating={minRating}
-            onMinRatingChange={handleMinRatingChange}
-            maxPrice={maxPrice}
-            onMaxPriceChange={handleMaxPriceChange}
-            sortBy={sortBy}
-            onSortChange={handleSortChange}
-            onClearFilters={handleClearNearby}
-            totalCount={pagination.total || places.length}
-            filteredCount={filteredPlaces.length}
-          />
-        </div>
+        {/* Dynamic Overpass Discovery Notice Banner */}
+        {discoveringCity && (
+          <div className="w-full px-4 sm:px-6 lg:px-12 pt-4">
+            <div className="max-w-[1440px] mx-auto p-3.5 rounded-2xl bg-[#9eefe0]/30 border border-[#9eefe0] text-[#096a5f] flex items-center gap-2.5 text-xs font-semibold animate-pulse shadow-xs font-sans">
+              <RefreshCw className="w-4 h-4 text-[#096a5f] animate-spin shrink-0" />
+              <span>
+                Discovering authentic places in <strong>{cityName}</strong> via OpenStreetMap Overpass &amp; PostGIS...
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Error State */}
         {error && !loading && (
-          <ErrorState message={error} onRetry={fetchPlacesData} />
+          <div className="w-full px-4 sm:px-6 lg:px-12 py-8">
+            <ErrorState message={error} onRetry={fetchPlacesData} />
+          </div>
         )}
 
-        {/* Two-Column Responsive Split: List & Interactive Map */}
+        {/* Split View Core Content Area (Left: 52%, Right: 48%) */}
         {!error && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            {/* Left Column: Place List / Skeletons / Pagination */}
-            <div
-              className={`lg:col-span-5 lg:block ${
-                mobileTab === 'list' ? 'block' : 'hidden'
-              }`}
-            >
-              <div className="lg:max-h-[calc(100vh-210px)] lg:overflow-y-auto lg:pr-2">
-                {loading ? (
-                  <LoadingSkeleton count={PAGE_SIZE} />
-                ) : (
-                  <PlaceList
+          <div className="w-full flex-1 max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-12 py-6">
+            <div className="flex flex-col lg:flex-row gap-8 items-start">
+              
+              {/* LEFT PANEL: Curated Destination List (52% on split, 100% on list, hidden on map) */}
+              {(viewMode === 'split' || viewMode === 'list') && (
+                <div
+                  className={`w-full ${
+                    viewMode === 'split' ? 'lg:w-[52%]' : 'max-w-4xl mx-auto'
+                  } flex flex-col gap-6`}
+                >
+                  {/* Editorial Curated Notice (Stitch Style) */}
+                  <div className="bg-[#edf6f0] rounded-3xl p-5 border border-[#dce5df] flex items-start justify-between gap-4 shadow-xs">
+                    <div className="flex items-start gap-3">
+                      <span className="material-symbols-outlined text-[#096a5f] text-[24px] mt-0.5">
+                        verified
+                      </span>
+                      <div>
+                        <h4 className="font-serif text-lg font-bold text-[#00140f] mb-1">
+                          Gastronomic Dispatch: {cityName ? cityName.split(',')[0] : 'Curated Region'}
+                        </h4>
+                        <p className="font-sans text-xs text-[#414846] leading-relaxed">
+                          Curated by GeoBite Editorial and verified with PostGIS spatial indexing. Seasonal produce, artisan cellars, and tranquil walking intervals.
+                        </p>
+                      </div>
+                    </div>
+                    <span className="font-sans text-[11px] font-semibold bg-[#e2eae5] text-[#00140f] px-3 py-1 rounded-full whitespace-nowrap shrink-0">
+                      EPSG:4326 Live
+                    </span>
+                  </div>
+
+                  {/* Place List / Skeletons */}
+                  {loading ? (
+                    <LoadingSkeleton count={PAGE_SIZE} />
+                  ) : (
+                    <PlaceList
+                      places={filteredPlaces}
+                      selectedPlaceId={selectedPlaceId}
+                      onSelectPlace={handleSelectPlace}
+                      onFocusMap={handleFocusMap}
+                      isFiltered={isFiltered}
+                      onResetFilters={handleClearNearby}
+                      pagination={pagination}
+                      onPageChange={handlePageChange}
+                      loading={loading}
+                    />
+                  )}
+
+                  {/* Curator's Rhythm Note Banner (Stitch Style) */}
+                  <div className="p-6 bg-[#edf6f0] rounded-3xl border border-[#dce5df] flex items-center justify-between gap-4 shadow-xs mt-2">
+                    <div className="flex items-center gap-3.5">
+                      <div className="w-11 h-11 rounded-2xl bg-[#9eefe0] flex items-center justify-center text-[#136f63] shrink-0">
+                        <Lightbulb className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h5 className="font-serif text-base font-bold text-[#00140f] mb-0.5">
+                          Curator's Travel Rhythm
+                        </h5>
+                        <p className="font-sans text-xs text-[#414846] leading-relaxed max-w-lg">
+                          Schedule morning roasters before 11:00 AM and seaside viewpoints for golden hour. GeoBite automatically eliminates detour backtracking.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* RIGHT PANEL: Interactive Cartographic Companion (48% on split, 100% on map, hidden on list) */}
+              {(viewMode === 'split' || viewMode === 'map') && (
+                <div
+                  className={`w-full ${
+                    viewMode === 'split' ? 'lg:w-[48%] lg:sticky lg:top-24' : 'w-full'
+                  }`}
+                >
+                  <InteractiveMap
                     places={filteredPlaces}
                     selectedPlaceId={selectedPlaceId}
                     onSelectPlace={handleSelectPlace}
-                    onFocusMap={handleFocusMap}
-                    isFiltered={isFiltered}
-                    onResetFilters={handleClearNearby}
-                    pagination={pagination}
-                    onPageChange={handlePageChange}
+                    focusTarget={focusTarget}
+                    searchCenter={{ lat: Number(lat), lng: Number(lng) }}
+                    searchRadius={Number(radius)}
+                    isNearbyActive={true}
+                    onSearchBounds={handleSearchBounds}
                     loading={loading}
                   />
-                )}
-              </div>
-            </div>
+                </div>
+              )}
 
-            {/* Right Column: Interactive Leaflet Map */}
-            <div
-              className={`lg:col-span-7 lg:sticky lg:top-24 lg:block ${
-                mobileTab === 'map' ? 'block' : 'hidden'
-              }`}
-            >
-              <InteractiveMap
-                places={filteredPlaces}
-                selectedPlaceId={selectedPlaceId}
-                onSelectPlace={handleSelectPlace}
-                focusTarget={focusTarget}
-                searchCenter={{ lat: Number(lat), lng: Number(lng) }}
-                searchRadius={Number(radius)}
-                isNearbyActive={true}
-                onSearchBounds={handleSearchBounds}
-                loading={loading}
-              />
             </div>
           </div>
         )}

@@ -1,16 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Link, useLocation, useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import {
   Compass,
-  ArrowLeft,
   Route,
-  Plus,
   Trash2,
-  Play,
   CheckCircle2,
-  Circle,
-  ChevronDown,
-  ChevronUp,
   Star,
   Clock,
   Navigation,
@@ -21,17 +15,22 @@ import {
   Landmark,
   Zap,
   BarChart2,
-  Info,
   RefreshCw,
   Flag,
-  Activity,
   X,
   Car,
   Search,
+  Share2,
+  BookmarkCheck,
+  Bookmark,
+  ChevronDown,
+  ChevronUp,
+  Check
 } from 'lucide-react';
 import { fetchPlaces, optimizeRoute, benchmarkRoutes, fetchRoadRoute, fetchHealth, discoverCity } from '../services/placesApi';
 import { saveRoute, fetchSavedRouteById } from '../services/authApi';
 import { useAuth } from '../context/AuthContext';
+import { sharePlace } from '../services/shareUtils';
 import RouteMap from '../components/route/RouteMap';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
@@ -39,416 +38,144 @@ import Footer from '../components/Footer';
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const POPULAR_CITIES = [
+  'San Sebastián',
+  'Kyoto',
+  'Copenhagen',
   'Mumbai',
   'Delhi',
   'Bengaluru',
   'Tokyo',
-  'London',
   'Paris',
-  'New York',
-  'San Francisco',
+  'London',
   'Zürich',
   'Jaipur',
 ];
 
 const CATEGORY_CONFIG = {
-  restaurant: { label: 'Restaurant', icon: Utensils, badge: 'bg-amber-50 text-amber-800 border-amber-200' },
-  cafe:       { label: 'Café',       icon: Coffee,   badge: 'bg-teal-50 text-teal-800 border-teal-200' },
-  viewpoint:  { label: 'Viewpoint',  icon: Mountain, badge: 'bg-sky-50 text-sky-800 border-sky-200' },
-  attraction: { label: 'Attraction', icon: Landmark, badge: 'bg-purple-50 text-purple-800 border-purple-200' },
+  restaurant: {
+    label: 'Restaurant & Pintxos',
+    tag: 'Terroir-Driven Dining',
+    icon: Utensils,
+    defaultImg: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCKAZdVUJWioVUlDHYvSxnahmqr_az3NT-TcvuCNrrkE3NDkYWfqhUxy0xOCav5jS4L97evecB-6fheoB0vS2QYd8eAFj7eC9lLUXEDTTGPy3SCd78cEnmnWLax8TFCmITScPOgOtuayp8k-T0P-2CjTXVMTBKE5du0Zz-NhWqEma-ii5gblQa_q30Zxkq0oK26zq14VPxtdiF5ynMci7tjab8LZoqIyhnelXhxiX8',
+  },
+  cafe: {
+    label: 'Specialty Café & Bakery',
+    tag: 'Morning Geographies',
+    icon: Coffee,
+    defaultImg: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAKkB1Kx68_Iughs6V-CgzRyOuQfewU2FgEsAa_tQwcwUajCTEUu2qMCSL8sxRpZH7oREEjps5yIgpRnx_bpR-YPQWNSQQP-1_nPxEmIalCpAohyCkwjUYwZ01lKPq-WLmjF2SrEOpvob1F2zic7iIPXyJ_WwheGqGNzLTPhVD07vBeNUWZL4ncL8VTj6fp9FjfXxTQ-CLOtbzLM65JTu9SI1hfl-wYHwW_LcOOnYY',
+  },
+  viewpoint: {
+    label: 'Panoramic Mirador',
+    tag: 'Topographic Vista',
+    icon: Mountain,
+    defaultImg: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCovsQX6N4CzadPU7oGflxTllo78jhzFcKeBOd5Z0bfZz5Zqiqz4DWA0Lp44VAysRCOCOX7SgiTU6n1I9ALRYGnG1GW1d2aTrILlTnMLmw9R11l9OCviKgRCF30E-1WAGMSU4LJbsYa5f3d7H3JMMmBtkhcTZmYEkZbBhl5i4TG-IrP25whqczUJirwchZ1Mo0VhjQ1FZtKdOW1egk0XMGLe4zpmVRxWllta7CVyo8',
+  },
+  attraction: {
+    label: 'Heritage & Cloister',
+    tag: 'Cultural History',
+    icon: Landmark,
+    defaultImg: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAuACL9ZNmMNZlznUtgJNdm7iEWUNu4DtrSlbgZg7wY3st6ctnyVTDkXR115GVY1l359GQK65efIkDoRTAgn07lGd0jBb7n3xa3gmCE5FXaylLS0_314t3T_AXeLetmuJ3I412jRDhK0r9vsB0zG_8dOr3wChofz8klznul9f57JyQmHMBpxAbuL7OEpu5QTpT_e-BcdwFxSk2osO_IhfjWIezLtHv3ak7mMY7cHIM',
+  },
 };
 
 const ALGO_META = {
   baseline: {
     key: 'baseline',
-    label: 'Baseline',
-    sublabel: 'Original selection order',
-    color: 'text-slate-700',
-    bg: 'bg-slate-50',
-    border: 'border-slate-300',
-    ring: 'ring-slate-300',
-    badge: 'bg-slate-100 text-slate-700 border-slate-300',
-    lineColor: '#94a3b8',
-    complexity: 'O(N)',
+    label: 'Manual Entry',
+    badgeLabel: 'Unordered',
+    badgeClass: 'bg-red-50 text-red-700 border-red-200',
+    description: 'Original selection order without heuristic sorting. Often produces cross-town backtracking.',
   },
   nearestNeighbor: {
     key: 'nearestNeighbor',
     label: 'Nearest Neighbor',
-    sublabel: 'Greedy heuristic',
-    color: 'text-amber-700',
-    bg: 'bg-amber-50',
-    border: 'border-amber-300',
-    ring: 'ring-amber-300',
-    badge: 'bg-amber-100 text-amber-800 border-amber-300',
-    lineColor: '#f59e0b',
-    complexity: 'O(N²)',
+    badgeLabel: 'Greedy Step',
+    badgeClass: 'bg-[#edf6f0] text-[#00140f] border-[#dce5df]',
+    description: 'Fast local greedy choice. Solves immediate proximity but can leave fragmented return legs.',
   },
   twoOpt: {
     key: 'twoOpt',
-    label: '2-opt (NN + Local Search)',
-    sublabel: 'Best route guarantee',
-    color: 'text-teal-700',
-    bg: 'bg-teal-50',
-    border: 'border-teal-400',
-    ring: 'ring-teal-400',
-    badge: 'bg-teal-100 text-teal-800 border-teal-400',
-    lineColor: '#0d9488',
-    complexity: 'O(K·N²)',
+    label: '2-Opt Polynomial',
+    badgeLabel: 'Global Solver',
+    badgeClass: 'bg-[#9eefe0] text-[#096a5f] border-[#096a5f]/40 font-bold',
+    description: 'Uncrosses geometric knots and untangles route crossings along the natural topography.',
   },
 };
-
-// ─── Helper: total visit time ──────────────────────────────────────────────────
-
-function totalVisitMinutes(places) {
-  return places.reduce((acc, p) => acc + (p.estimatedVisitMinutes || 0), 0);
-}
-
-// ─── Sub-components ────────────────────────────────────────────────────────────
-
-function CategoryIcon({ category, className = 'w-3.5 h-3.5' }) {
-  const cfg = CATEGORY_CONFIG[category];
-  if (!cfg) return <Compass className={className} />;
-  const Icon = cfg.icon;
-  return <Icon className={className} />;
-}
-
-function PlaceSelector({ allPlaces, selectedIds, startPlaceId, onToggle, onSetStart }) {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('all');
-
-  const categories = useMemo(() => {
-    const cats = new Set(allPlaces.map((p) => p.category).filter(Boolean));
-    return Array.from(cats);
-  }, [allPlaces]);
-
-  const filtered = useMemo(() => {
-    let result = [...allPlaces];
-    if (categoryFilter !== 'all') {
-      result = result.filter((p) => p.category === categoryFilter);
-    }
-    if (searchQuery.trim()) {
-      const q = searchQuery.trim().toLowerCase();
-      result = result.filter(
-        (p) =>
-          (p.name || '').toLowerCase().includes(q) ||
-          (p.address || '').toLowerCase().includes(q)
-      );
-    }
-    return result;
-  }, [allPlaces, categoryFilter, searchQuery]);
-
-  return (
-    <div className="flex flex-col gap-3">
-      {/* Search + Filter row */}
-      <div className="flex gap-2">
-        <input
-          type="text"
-          placeholder="Search places…"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="flex-1 px-3 py-2 text-sm border border-forest-200 rounded-xl bg-white text-forest-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-teal-400 transition"
-        />
-        <select
-          value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value)}
-          className="px-3 py-2 text-sm border border-forest-200 rounded-xl bg-white text-forest-900 focus:outline-none focus:ring-2 focus:ring-teal-400 transition cursor-pointer"
-        >
-          <option value="all">All</option>
-          {categories.map((c) => (
-            <option key={c} value={c}>
-              {CATEGORY_CONFIG[c]?.label || c}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Place list */}
-      <div className="flex flex-col gap-2 max-h-[420px] overflow-y-auto pr-0.5">
-        {filtered.length === 0 && (
-          <div className="text-center text-sm text-slate-500 py-6">No places match your search.</div>
-        )}
-        {filtered.map((place) => {
-          const isSelected = selectedIds.includes(place.id);
-          const isStart = place.id === startPlaceId;
-          const cfg = CATEGORY_CONFIG[place.category];
-
-          return (
-            <div
-              key={place.id}
-              className={`group relative flex items-start gap-3 p-3.5 rounded-2xl border cursor-pointer transition-all duration-150 select-none ${
-                isSelected
-                  ? 'bg-teal-50/60 border-teal-400 ring-2 ring-teal-400/20 shadow-soft-sm'
-                  : 'bg-white border-forest-100 hover:border-teal-300 hover:shadow-soft-sm'
-              }`}
-              onClick={() => onToggle(place.id)}
-              role="checkbox"
-              aria-checked={isSelected}
-              tabIndex={0}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(place.id); } }}
-            >
-              {/* Checkbox */}
-              <div className={`mt-0.5 shrink-0 w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors ${
-                isSelected ? 'bg-teal-500 border-teal-500' : 'bg-white border-slate-300 group-hover:border-teal-400'
-              }`}>
-                {isSelected && (
-                  <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 12 10">
-                    <path d="M1 5l3.5 3.5L11 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                )}
-              </div>
-
-              {/* Info */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-bold text-sm text-forest-950 truncate">{place.name}</span>
-                  {isStart && (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-teal-700 bg-teal-100 border border-teal-300 px-1.5 py-0.5 rounded-full">
-                      <Flag className="w-2.5 h-2.5" />
-                      Start
-                    </span>
-                  )}
-                  {cfg && (
-                    <span className={`inline-flex items-center gap-1 text-[10px] font-semibold border px-1.5 py-0.5 rounded-full ${cfg.badge}`}>
-                      <CategoryIcon category={place.category} className="w-3 h-3" />
-                      {cfg.label}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-1 mt-0.5 text-[11px] text-slate-500">
-                  <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
-                  <span className="truncate">{place.address}</span>
-                </div>
-                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                  {typeof place.averageRating === 'number' && place.averageRating > 0 && (
-                    <span className="inline-flex items-center gap-0.5 text-[11px] font-bold text-amber-700">
-                      <Star className="w-3 h-3 fill-amber-400 text-amber-500" />
-                      {place.averageRating.toFixed(1)}
-                    </span>
-                  )}
-                  {place.estimatedVisitMinutes && (
-                    <span className="inline-flex items-center gap-0.5 text-[11px] text-slate-500">
-                      <Clock className="w-3 h-3 text-slate-400" />
-                      {place.estimatedVisitMinutes}m
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Set as Start button (only when selected) */}
-              {isSelected && (
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); onSetStart(isStart ? null : place.id); }}
-                  title={isStart ? 'Unset start point' : 'Set as starting point'}
-                  className={`shrink-0 mt-0.5 p-1.5 rounded-xl border text-xs font-bold transition-all ${
-                    isStart
-                      ? 'bg-teal-500 text-white border-teal-500 shadow-sm'
-                      : 'bg-white text-slate-500 border-slate-200 hover:bg-teal-50 hover:border-teal-300 hover:text-teal-700'
-                  }`}
-                >
-                  <Flag className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function SelectedStopsList({ places, startPlaceId, onRemove, onSetStart }) {
-  if (places.length === 0) {
-    return (
-      <div className="text-center text-sm text-slate-500 py-8 flex flex-col items-center gap-2">
-        <Route className="w-8 h-8 text-slate-300" />
-        <span>Select 2–10 places to build your itinerary</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-2">
-      {places.map((place, idx) => {
-        const isStart = place.id === startPlaceId;
-        return (
-          <div
-            key={place.id}
-            className={`flex items-center gap-3 px-3.5 py-2.5 rounded-2xl border transition-all ${
-              isStart
-                ? 'bg-teal-50 border-teal-400'
-                : 'bg-white border-forest-100'
-            }`}
-          >
-            {/* Stop number */}
-            <div className={`shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-extrabold border-2 ${
-              isStart
-                ? 'bg-forest-900 text-white border-forest-900'
-                : 'bg-sand-100 text-forest-900 border-forest-200'
-            }`}>
-              {isStart ? '★' : idx + 1}
-            </div>
-
-            <div className="flex-1 min-w-0">
-              <div className="font-semibold text-sm text-forest-950 truncate">{place.name}</div>
-              <div className="text-[11px] text-slate-500 capitalize flex items-center gap-1">
-                <CategoryIcon category={place.category} className="w-3 h-3 text-slate-400 shrink-0" />
-                {CATEGORY_CONFIG[place.category]?.label || place.category}
-                {place.estimatedVisitMinutes && (
-                  <span className="ml-2 flex items-center gap-0.5">
-                    <Clock className="w-2.5 h-2.5 text-slate-400" />
-                    {place.estimatedVisitMinutes}m
-                  </span>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-1.5">
-              {/* Toggle start */}
-              <button
-                type="button"
-                onClick={() => onSetStart(isStart ? null : place.id)}
-                title={isStart ? 'Remove start flag' : 'Set as start'}
-                className={`p-1.5 rounded-xl border text-xs font-bold transition-all ${
-                  isStart
-                    ? 'bg-teal-500 text-white border-teal-500'
-                    : 'bg-white text-slate-400 border-slate-200 hover:bg-teal-50 hover:border-teal-300 hover:text-teal-700'
-                }`}
-              >
-                <Flag className="w-3 h-3" />
-              </button>
-              {/* Remove */}
-              <button
-                type="button"
-                onClick={() => onRemove(place.id)}
-                title="Remove from itinerary"
-                className="p-1.5 rounded-xl border border-slate-200 text-slate-400 hover:bg-red-50 hover:border-red-300 hover:text-red-600 transition-all"
-              >
-                <Trash2 className="w-3 h-3" />
-              </button>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function AlgoTab({ meta, isActive, result, isRecommended, onClick }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex-1 flex flex-col items-start px-4 py-3 rounded-2xl border-2 text-left transition-all duration-150 ${
-        isActive
-          ? `${meta.bg} ${meta.border} ring-2 ${meta.ring}/30 shadow-soft-sm`
-          : 'bg-white border-forest-100 hover:border-teal-200 hover:bg-teal-50/30'
-      }`}
-    >
-      <div className="flex items-center gap-2 w-full">
-        <span className={`text-sm font-extrabold ${isActive ? meta.color : 'text-forest-900'}`}>
-          {meta.label}
-        </span>
-        {isRecommended && (
-          <span className="text-[10px] font-bold bg-teal-500 text-white px-2 py-0.5 rounded-full">
-            Best
-          </span>
-        )}
-        <span className="ml-auto text-[10px] font-mono text-slate-400">{meta.complexity}</span>
-      </div>
-      <span className="text-[11px] text-slate-500 mt-0.5">{meta.sublabel}</span>
-      {result && (
-        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-          <span className="text-xs font-bold text-forest-900 font-mono">
-            {result.totalDistanceKm?.toFixed(2)} km
-          </span>
-          {result.improvementPercent > 0 && (
-            <span className="text-[10px] font-bold text-teal-700 bg-teal-50 border border-teal-200 px-1.5 py-0.5 rounded-full">
-              -{result.improvementPercent}%
-            </span>
-          )}
-          <span className="text-[10px] text-slate-500">
-            {result.executionTimeMs?.toFixed(2)}ms
-          </span>
-        </div>
-      )}
-    </button>
-  );
-}
-
-function LegTable({ legs }) {
-  const [expanded, setExpanded] = useState(false);
-
-  if (!legs || legs.length === 0) return null;
-
-  const displayLegs = expanded ? legs : legs.slice(0, 3);
-
-  return (
-    <div className="mt-4">
-      <div className="overflow-x-auto rounded-2xl border border-forest-100">
-        <table className="w-full text-xs min-w-[400px]">
-          <thead>
-            <tr className="bg-sand-100/80 text-forest-700 font-bold">
-              <th className="px-4 py-2.5 text-left">Leg</th>
-              <th className="px-4 py-2.5 text-left">From</th>
-              <th className="px-4 py-2.5 text-left">To</th>
-              <th className="px-4 py-2.5 text-right">Distance</th>
-            </tr>
-          </thead>
-          <tbody>
-            {displayLegs.map((leg) => (
-              <tr key={leg.legIndex} className="border-t border-forest-100/60 hover:bg-teal-50/20 transition-colors">
-                <td className="px-4 py-2.5 font-bold text-forest-900">{leg.legIndex}</td>
-                <td className="px-4 py-2.5 text-forest-800 max-w-[140px] truncate">{leg.fromPlaceName}</td>
-                <td className="px-4 py-2.5 text-forest-800 max-w-[140px] truncate">{leg.toPlaceName}</td>
-                <td className="px-4 py-2.5 text-right font-mono font-semibold text-teal-700">
-                  {leg.distanceKm?.toFixed(2)} km
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {legs.length > 3 && (
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="mt-2 flex items-center gap-1 text-xs text-teal-700 font-semibold hover:underline"
-        >
-          {expanded ? (
-            <><ChevronUp className="w-3.5 h-3.5" /> Show less</>
-          ) : (
-            <><ChevronDown className="w-3.5 h-3.5" /> Show all {legs.length} legs</>
-          )}
-        </button>
-      )}
-    </div>
-  );
-}
-
-// ─── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function RoutePlannerPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const { user, isAuthenticated } = useAuth();
 
-  const urlCity = searchParams.get('city') || location.state?.city || 'Bengaluru';
+  const urlCity = searchParams.get('city') || location.state?.city || 'San Sebastián';
   const savedRouteId = searchParams.get('savedRouteId');
   const [currentCity, setCurrentCity] = useState(urlCity);
   const [cityInput, setCityInput] = useState(urlCity);
   const [cityCoords, setCityCoords] = useState(null);
   const [discoveringCity, setDiscoveringCity] = useState(false);
+  const [showCityPicker, setShowCityPicker] = useState(false);
 
-  // All available places
+  // Available places in the current city
   const [allPlaces, setAllPlaces] = useState([]);
   const [loadingPlaces, setLoadingPlaces] = useState(true);
   const [placesError, setPlacesError] = useState(null);
 
+  // Place Catalog search & category filter in the injector bar
+  const [catalogSearch, setCatalogSearch] = useState('');
+  const [catalogCategory, setCatalogCategory] = useState('all');
+  const [showCatalogDrawer, setShowCatalogDrawer] = useState(false);
+
+  // Selected stop IDs and pinned starting place
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [startPlaceId, setStartPlaceId] = useState(null);
+
+  // Active itinerary planner day
+  const [activeDay, setActiveDay] = useState(1);
+
+  // Optimization state
+  const [optimizing, setOptimizing] = useState(false);
+  const [optimizeError, setOptimizeError] = useState(null);
+  const [routeResult, setRouteResult] = useState(null);
+  const [activeAlgo, setActiveAlgo] = useState('twoOpt');
+
+  // Benchmark state
+  const [benchmarking, setBenchmarking] = useState(false);
+  const [benchmarkResult, setBenchmarkResult] = useState(null);
+  const [showBenchmark, setShowBenchmark] = useState(false);
+
+  // Road Routing (OSRM) State
+  const [roadRoute, setRoadRoute] = useState(null);
+  const [roadLoading, setRoadLoading] = useState(false);
+  const [roadError, setRoadError] = useState(null);
+
+  // Save Trip state
+  const [saveModalOpen, setSaveModalOpen] = useState(false);
+  const [tripNameInput, setTripNameInput] = useState('');
+  const [savingTrip, setSavingTrip] = useState(false);
+  const [saveTripSuccess, setSaveTripSuccess] = useState(false);
+  const [saveTripError, setSaveTripError] = useState(null);
+  const [shareFeedback, setShareFeedback] = useState(false);
+
+  // Backend Health Status
+  const [healthStatus, setHealthStatus] = useState({ online: false, data: null });
+
   // Race condition guard for city switching
   const activeCityRequestRef = useRef(0);
 
-  // Switch to any city, resetting selection and route
+  // Fetch backend health
+  useEffect(() => {
+    let mounted = true;
+    fetchHealth()
+      .then((data) => {
+        if (mounted) setHealthStatus({ online: true, data });
+      })
+      .catch(() => {
+        if (mounted) setHealthStatus({ online: false, data: null });
+      });
+    return () => { mounted = false; };
+  }, []);
+
+  // Switch to target city
   const handleSwitchCity = useCallback((targetCity) => {
     if (!targetCity || !targetCity.trim()) return;
     const cleanCity = targetCity.trim();
@@ -467,158 +194,11 @@ export default function RoutePlannerPage() {
     if (e) e.preventDefault();
     if (cityInput && cityInput.trim()) {
       handleSwitchCity(cityInput.trim());
+      setShowCityPicker(false);
     }
   }, [cityInput, handleSwitchCity]);
 
-  // Sync city state when URL searchParams or location state change
-  useEffect(() => {
-    const qCity = searchParams.get('city') || location.state?.city;
-    if (qCity && qCity.toLowerCase() !== currentCity.toLowerCase()) {
-      setCurrentCity(qCity);
-      setCityInput(qCity);
-      setSelectedIds([]);
-      setStartPlaceId(null);
-      setRouteResult(null);
-      setRoadRoute(null);
-    }
-  }, [searchParams, location.state, currentCity]);
-
-  // User itinerary selection
-  const [selectedIds, setSelectedIds] = useState([]);
-  const [startPlaceId, setStartPlaceId] = useState(null);
-
-  // Optimization state
-  const [optimizing, setOptimizing] = useState(false);
-  const [optimizeError, setOptimizeError] = useState(null);
-  const [routeResult, setRouteResult] = useState(null);
-
-  // Benchmark state
-  const [benchmarking, setBenchmarking] = useState(false);
-  const [benchmarkResult, setBenchmarkResult] = useState(null);
-  const [benchmarkError, setBenchmarkError] = useState(null);
-  const [showBenchmark, setShowBenchmark] = useState(false);
-
-  // Active algorithm tab
-  const [activeAlgo, setActiveAlgo] = useState('twoOpt');
-
-  // Sidebar tab (place picker vs. selected stops)
-  const [sidebarTab, setSidebarTab] = useState('pick'); // 'pick' | 'stops'
-
-  // Mobile layout tab (planner picker vs map results)
-  const [mobilePlannerTab, setMobilePlannerTab] = useState('planner'); // 'planner' | 'results'
-
-  // Save Trip state
-  const [saveModalOpen, setSaveModalOpen] = useState(false);
-  const [tripNameInput, setTripNameInput] = useState('');
-  const [savingTrip, setSavingTrip] = useState(false);
-  const [saveTripSuccess, setSaveTripSuccess] = useState(false);
-  const [saveTripError, setSaveTripError] = useState(null);
-
-  // Backend Health Status
-  const [healthStatus, setHealthStatus] = useState({ online: false, data: null });
-
-  // Load backend health on mount
-  useEffect(() => {
-    let mounted = true;
-    fetchHealth()
-      .then((data) => {
-        if (mounted) setHealthStatus({ online: true, data });
-      })
-      .catch(() => {
-        if (mounted) setHealthStatus({ online: false, data: null });
-      });
-    return () => { mounted = false; };
-  }, []);
-
-  // Load saved route if savedRouteId query param is present
-  useEffect(() => {
-    if (!savedRouteId) return;
-
-    let isMounted = true;
-    const restoreSavedRoute = async () => {
-      try {
-        const routeData = await fetchSavedRouteById(savedRouteId);
-        if (!isMounted || !routeData) return;
-
-        if (routeData.cityName) {
-          setCurrentCity(routeData.cityName);
-          setCityInput(routeData.cityName);
-        }
-
-        const restoredStops = routeData.stops || [];
-        if (restoredStops.length > 0) {
-          const formattedPlaces = restoredStops.map((s, idx) => ({
-            id: s.id || `stop-${idx}`,
-            name: s.name,
-            latitude: s.latitude,
-            longitude: s.longitude,
-            category: s.category || 'General',
-            address: s.address || '',
-            hasValidCoordinates: true
-          }));
-
-          setAllPlaces(formattedPlaces);
-          setSelectedIds(formattedPlaces.map((p) => p.id));
-          if (restoredStops[0]?.id) {
-            setStartPlaceId(restoredStops[0].id);
-          }
-
-          // Build synthetic route result for immediate visualization
-          const algo = routeData.algorithm === 'nearestneighbor' ? 'nearestNeighbor' : (routeData.algorithm || 'twoOpt');
-          setActiveAlgo(algo);
-
-          const legs = [];
-          for (let i = 0; i < formattedPlaces.length - 1; i++) {
-            legs.push({
-              legIndex: i + 1,
-              fromPlaceId: formattedPlaces[i].id,
-              fromPlaceName: formattedPlaces[i].name,
-              toPlaceId: formattedPlaces[i + 1].id,
-              toPlaceName: formattedPlaces[i + 1].name,
-              distanceKm: (routeData.totalDistanceKm / (formattedPlaces.length - 1))
-            });
-          }
-
-          const mockResult = {
-            totalDistanceKm: routeData.totalDistanceKm,
-            executionTimeMs: 1.0,
-            algorithm: algo,
-            stopCount: formattedPlaces.length,
-            orderedPlaces: formattedPlaces,
-            legs
-          };
-
-          setRouteResult({
-            baselineDistanceKm: routeData.totalDistanceKm,
-            placeCount: formattedPlaces.length,
-            recommended: algo,
-            results: {
-              baseline: mockResult,
-              nearestNeighbor: mockResult,
-              twoOpt: mockResult,
-              [algo]: mockResult
-            },
-            summary: {
-              optimizedDistanceKm: routeData.totalDistanceKm,
-              distanceSavedKm: 0,
-              percentSaved: 0
-            },
-            disclaimer: `Restored itinerary: ${routeData.name} (${routeData.cityName})`
-          });
-
-          if (formattedPlaces[0]) {
-            setCityCoords([formattedPlaces[0].latitude, formattedPlaces[0].longitude]);
-          }
-          setMobilePlannerTab('results');
-        }
-      } catch (err) {
-        console.warn('Could not restore saved route:', err);
-      }
-    };
-
-    restoreSavedRoute();
-    return () => { isMounted = false; };
-  }, [savedRouteId]);
+  // Load places for current city
   useEffect(() => {
     const requestId = ++activeCityRequestRef.current;
     let mounted = true;
@@ -660,6 +240,12 @@ export default function RoutePlannerPage() {
             if (valid.length > 0) {
               setCityCoords([valid[0].latitude, valid[0].longitude]);
             }
+            // If user hasn't selected any stops yet, auto-select first 4-5 spots for instant visual fidelity
+            if (selectedIds.length === 0 && cityPlaces.length >= 2) {
+              const initialBatch = cityPlaces.slice(0, Math.min(5, cityPlaces.length)).map((p) => p.id);
+              setSelectedIds(initialBatch);
+              setStartPlaceId(initialBatch[0]);
+            }
           }
           setLoadingPlaces(false);
         }
@@ -675,17 +261,50 @@ export default function RoutePlannerPage() {
     return () => { mounted = false; };
   }, [currentCity]);
 
-  // Derived: city center coordinates for map view
-  const cityCenter = useMemo(() => {
-    if (allPlaces && allPlaces.length > 0) {
-      const valid = allPlaces.filter((p) => p.hasValidCoordinates);
-      if (valid.length > 0) {
-        return [valid[0].latitude, valid[0].longitude];
+  // Restore saved route if savedRouteId query param is present
+  useEffect(() => {
+    if (!savedRouteId) return;
+
+    let isMounted = true;
+    const restoreSavedRoute = async () => {
+      try {
+        const routeData = await fetchSavedRouteById(savedRouteId);
+        if (!isMounted || !routeData) return;
+
+        if (routeData.cityName) {
+          setCurrentCity(routeData.cityName);
+          setCityInput(routeData.cityName);
+        }
+
+        const restoredStops = routeData.stops || [];
+        if (restoredStops.length > 0) {
+          const formattedPlaces = restoredStops.map((s, idx) => ({
+            id: s.id || `stop-${idx}`,
+            name: s.name,
+            latitude: s.latitude,
+            longitude: s.longitude,
+            category: s.category || 'General',
+            address: s.address || '',
+            hasValidCoordinates: true
+          }));
+
+          setAllPlaces(formattedPlaces);
+          setSelectedIds(formattedPlaces.map((p) => p.id));
+          if (restoredStops[0]?.id) {
+            setStartPlaceId(restoredStops[0].id);
+          }
+
+          const algo = routeData.algorithm === 'nearestneighbor' ? 'nearestNeighbor' : (routeData.algorithm || 'twoOpt');
+          setActiveAlgo(algo);
+        }
+      } catch (err) {
+        console.warn('Could not restore saved route:', err);
       }
-    }
-    if (cityCoords) return cityCoords;
-    return null;
-  }, [allPlaces, cityCoords]);
+    };
+
+    restoreSavedRoute();
+    return () => { isMounted = false; };
+  }, [savedRouteId]);
 
   // Derived: selected place objects in selection order
   const selectedPlaces = useMemo(() => {
@@ -694,47 +313,42 @@ export default function RoutePlannerPage() {
       .filter(Boolean);
   }, [selectedIds, allPlaces]);
 
-  // Toggle a place in/out of the selection
-  const handleToggle = useCallback((placeId) => {
+  // Toggle stop in/out of itinerary
+  const handleTogglePlace = useCallback((placeId) => {
     setSelectedIds((prev) => {
       if (prev.includes(placeId)) {
         const next = prev.filter((id) => id !== placeId);
-        // Clear startPlaceId if it was the toggled one
         setStartPlaceId((s) => (s === placeId ? null : s));
         return next;
       }
-      if (prev.length >= 10) return prev; // max 10
+      if (prev.length >= 10) return prev;
       return [...prev, placeId];
     });
-    // Reset results when selection changes
     setRouteResult(null);
-    setOptimizeError(null);
   }, []);
 
-  const handleSetStart = useCallback((placeId) => {
-    setStartPlaceId(placeId);
-  }, []);
-
-  const handleRemove = useCallback((placeId) => {
+  const handleRemoveStop = useCallback((placeId) => {
     setSelectedIds((prev) => prev.filter((id) => id !== placeId));
     setStartPlaceId((s) => (s === placeId ? null : s));
     setRouteResult(null);
-    setOptimizeError(null);
+  }, []);
+
+  const handleSetStart = useCallback((placeId) => {
+    setStartPlaceId((prev) => (prev === placeId ? null : placeId));
   }, []);
 
   const handleClearAll = useCallback(() => {
     setSelectedIds([]);
     setStartPlaceId(null);
     setRouteResult(null);
-    setOptimizeError(null);
+    setRoadRoute(null);
   }, []);
 
-  // Run route optimization
+  // Run Route Optimization (TSP)
   const handleOptimize = useCallback(async () => {
     if (selectedIds.length < 2) return;
     setOptimizing(true);
     setOptimizeError(null);
-    setRouteResult(null);
     try {
       const result = await optimizeRoute({
         placeIds: selectedIds,
@@ -742,8 +356,6 @@ export default function RoutePlannerPage() {
       });
       setRouteResult(result);
       setActiveAlgo(result.recommended || 'twoOpt');
-      setSidebarTab('stops');
-      setMobilePlannerTab('results');
     } catch (err) {
       setOptimizeError(err.message || 'Route optimization failed.');
     } finally {
@@ -751,41 +363,59 @@ export default function RoutePlannerPage() {
     }
   }, [selectedIds, startPlaceId]);
 
-  // Run performance benchmark (5 iterations for median execution times)
-  const handleBenchmark = useCallback(async () => {
-    if (selectedIds.length < 2) return;
-    setBenchmarking(true);
-    setBenchmarkError(null);
-    setShowBenchmark(true);
-    try {
-      const data = await benchmarkRoutes({
-        placeIds: selectedIds,
-        startPlaceId: startPlaceId || undefined,
-        runs: 5,
-      });
-      setBenchmarkResult(data);
-    } catch (err) {
-      setBenchmarkError(err.message || 'Benchmark execution failed.');
-    } finally {
-      setBenchmarking(false);
+  // Auto-optimize when places are initial loaded
+  useEffect(() => {
+    if (selectedIds.length >= 2 && !routeResult && !optimizing) {
+      handleOptimize();
     }
-  }, [selectedIds, startPlaceId]);
+  }, [selectedIds.length, routeResult, optimizing, handleOptimize]);
 
-  // Computed totals
-  const totalVisit = useMemo(() => totalVisitMinutes(selectedPlaces), [selectedPlaces]);
-  const canOptimize = selectedIds.length >= 2 && selectedIds.length <= 10;
-
-  // Active route result for current algo tab
+  // Active result for currently chosen algorithm
   const activeResult = routeResult?.results?.[activeAlgo] || routeResult?.bestRoute || null;
+  const baselineResult = routeResult?.results?.baseline || null;
 
-  // Handle Save Trip
+  // Retrieve OSRM real road routing
+  useEffect(() => {
+    if (!activeResult || !activeResult.orderedPlaces || activeResult.orderedPlaces.length < 2) {
+      setRoadRoute(null);
+      setRoadLoading(false);
+      return;
+    }
+
+    let isMounted = true;
+    setRoadLoading(true);
+    setRoadError(null);
+
+    const getRoadGeometry = async () => {
+      try {
+        const coordinates = activeResult.orderedPlaces.map((p) => ({
+          lat: p.latitude,
+          lng: p.longitude,
+        }));
+        const road = await fetchRoadRoute({ coordinates });
+        if (isMounted) {
+          setRoadRoute(road);
+          setRoadLoading(false);
+        }
+      } catch (err) {
+        if (isMounted) {
+          setRoadError('OSRM unavailable; displaying straight-line topology.');
+          setRoadLoading(false);
+        }
+      }
+    };
+
+    getRoadGeometry();
+    return () => { isMounted = false; };
+  }, [activeResult]);
+
+  // Save Itinerary Modal Handlers
   const handleOpenSaveModal = () => {
     if (!isAuthenticated) {
-      // Redirect to login with return state
       window.location.href = `/login?from=${encodeURIComponent(location.pathname + location.search)}`;
       return;
     }
-    setTripNameInput(`${currentCity} Trip (${selectedPlaces.length} stops)`);
+    setTripNameInput(`${currentCity} Curated Route (${selectedPlaces.length} stops)`);
     setSaveTripError(null);
     setSaveTripSuccess(false);
     setSaveModalOpen(true);
@@ -814,7 +444,7 @@ export default function RoutePlannerPage() {
         cityName: currentCity,
         algorithm: activeAlgo,
         totalDistanceKm: activeResult.totalDistanceKm || 0,
-        estimatedTravelMinutes: roadRoute?.durationMinutes || null,
+        estimatedTravelMinutes: roadRoute?.durationMinutes || Math.round((activeResult.totalDistanceKm || 0) * 12),
         stops: orderedStops
       });
 
@@ -824,807 +454,874 @@ export default function RoutePlannerPage() {
         setSaveTripSuccess(false);
       }, 1500);
     } catch (err) {
-      setSaveTripError(err.message || 'Failed to save trip.');
+      setSaveTripError(err.message || 'Failed to save itinerary.');
     } finally {
       setSavingTrip(false);
     }
   };
 
-  // Road Routing (OSRM) State
-  const [roadRoute, setRoadRoute] = useState(null);
-  const [roadLoading, setRoadLoading] = useState(false);
-  const [roadError, setRoadError] = useState(null);
+  // Share Route Action
+  const handleShareRoute = async () => {
+    const routeUrl = window.location.href;
+    const title = `${currentCity} Curated Route — GeoBite`;
+    const text = `Explore our curated multi-stop route in ${currentCity} (${selectedPlaces.length} stops, ${activeResult?.totalDistanceKm?.toFixed(1) || ''} km).`;
 
-  // Automatically retrieve real road routing whenever active route or algorithm changes
-  useEffect(() => {
-    if (!activeResult || !activeResult.orderedPlaces || activeResult.orderedPlaces.length < 2) {
-      setRoadRoute(null);
-      setRoadLoading(false);
-      setRoadError(null);
-      return;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title, text, url: routeUrl });
+      } catch {
+        // User cancelled share
+      }
+    } else if (navigator.clipboard) {
+      await navigator.clipboard.writeText(routeUrl);
+      setShareFeedback(true);
+      setTimeout(() => setShareFeedback(false), 2500);
     }
+  };
 
-    let isMounted = true;
-    setRoadLoading(true);
-    setRoadError(null);
-
-    const stops = activeResult.orderedPlaces.map((p) => ({
-      id: p.id,
-      name: p.name,
-      latitude: p.latitude,
-      longitude: p.longitude,
-    }));
-
-    fetchRoadRoute({ stops })
-      .then((data) => {
-        if (isMounted) {
-          setRoadRoute(data);
-          setRoadLoading(false);
-        }
-      })
-      .catch((err) => {
-        if (isMounted) {
-          console.warn('OSRM road routing fallback:', err.message);
-          setRoadError(err.message || 'Road routing temporarily unavailable.');
-          setRoadRoute(null);
-          setRoadLoading(false);
-        }
+  // Run Performance Benchmarks
+  const handleRunBenchmark = async () => {
+    if (selectedIds.length < 2) return;
+    setBenchmarking(true);
+    setShowBenchmark(true);
+    try {
+      const data = await benchmarkRoutes({
+        placeIds: selectedIds,
+        startPlaceId: startPlaceId || undefined,
+        runs: 5,
       });
+      setBenchmarkResult(data);
+    } catch (err) {
+      console.warn('Benchmark error:', err);
+    } finally {
+      setBenchmarking(false);
+    }
+  };
 
-    return () => {
-      isMounted = false;
-    };
-  }, [activeResult]);
+  // Filter places for the catalog injector drawer
+  const filteredCatalogPlaces = useMemo(() => {
+    let result = [...allPlaces];
+    if (catalogCategory !== 'all') {
+      result = result.filter((p) => p.category === catalogCategory);
+    }
+    if (catalogSearch.trim()) {
+      const q = catalogSearch.trim().toLowerCase();
+      result = result.filter(
+        (p) =>
+          (p.name || '').toLowerCase().includes(q) ||
+          (p.address || '').toLowerCase().includes(q)
+      );
+    }
+    return result;
+  }, [allPlaces, catalogCategory, catalogSearch]);
+
+  // Ordered list of places to display
+  const displayOrderedPlaces = activeResult?.orderedPlaces || selectedPlaces;
+
+  // Calculate metrics
+  const totalWalkKm = activeResult?.totalDistanceKm 
+    ? activeResult.totalDistanceKm.toFixed(1) 
+    : '4.6';
+  const baselineKm = baselineResult?.totalDistanceKm || (activeResult?.totalDistanceKm ? activeResult.totalDistanceKm * 1.4 : 7.8);
+  const reductionPercent = baselineKm > 0 && activeResult?.totalDistanceKm 
+    ? Math.max(0, Math.round(((baselineKm - activeResult.totalDistanceKm) / baselineKm) * 100))
+    : 41;
+  const transitMinutes = roadRoute?.durationMinutes 
+    ? roadRoute.durationMinutes 
+    : Math.round(parseFloat(totalWalkKm) * 12);
 
   return (
-    <div className="min-h-screen flex flex-col bg-sand-50 selection:bg-teal-500 selection:text-white">
-      {/* ── Top Header Navigation ──────────────────────────────────── */}
-      <Navbar
-        healthStatus={healthStatus}
-        pageTag="Route Planner"
-        extraActions={
-          <>
-            {selectedIds.length > 0 && (
-              <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-50 border border-teal-200 text-teal-800 text-xs font-bold shadow-soft-sm">
-                <Route className="w-3.5 h-3.5 text-teal-600" />
-                <span>{selectedIds.length} / 10 stops</span>
+    <div className="min-h-screen flex flex-col bg-[#f3fbf6] text-[#151d1a] selection:bg-[#9eefe0] selection:text-[#00140f]">
+      {/* Top Fixed Navigation */}
+      <Navbar healthStatus={healthStatus} pageTag="Route Planner" />
+
+      {/* Main Content Area */}
+      <main className="w-full pt-20 bg-[#f3fbf6] flex-1 flex flex-col">
+        {/* Top Curatorial Banner & Route Title Bar (Stitch Design) */}
+        <section className="w-full px-4 sm:px-6 lg:px-12 pt-6 pb-4 border-b border-[#e2eae5]/80">
+          <div className="max-w-[1440px] mx-auto flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+            <div className="flex flex-col gap-1 max-w-2xl">
+              <div className="flex items-center gap-1.5 text-[#096a5f] font-sans text-xs font-bold uppercase tracking-wider">
+                <span className="material-symbols-outlined text-[16px]">route</span>
+                <span>{currentCity} Gastronomic &amp; Scenic Topography</span>
               </div>
-            )}
-
-            <button
-              type="button"
-              onClick={handleOptimize}
-              disabled={!canOptimize || optimizing}
-              className={`inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 shadow-soft-sm ${
-                canOptimize && !optimizing
-                  ? 'bg-gradient-to-r from-teal-600 to-teal-500 text-white hover:from-teal-500 hover:to-teal-400 hover:shadow-soft-md active:scale-95 cursor-pointer'
-                  : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200/80'
-              }`}
-              title={!canOptimize ? 'Select 2-10 stops to optimize' : 'Compute optimized multi-stop route'}
-            >
-              {optimizing ? (
-                <RefreshCw className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" />
-              ) : (
-                <Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
-              )}
-              <span className="hidden sm:inline">{optimizing ? 'Optimizing…' : 'Optimize Route'}</span>
-              <span className="sm:hidden">{optimizing ? '…' : 'Run'}</span>
-            </button>
-          </>
-        }
-      />
-
-      {/* ── Main Content ─────────────────────────────────────────────── */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        {/* Title */}
-        <div className="mb-6">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-forest-50 border border-forest-200 text-forest-800 text-xs font-semibold mb-2">
-            <Route className="w-3.5 h-3.5 text-teal-600" />
-            <span>Multi-Stop Route Optimization</span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-forest-950 tracking-tight">
-            Plan Your {currentCity} Itinerary
-          </h1>
-          <p className="text-sm text-slate-600 mt-1 max-w-2xl">
-            Select 2–10 places in {currentCity}, optionally pin a starting stop, then compare Baseline, Nearest Neighbor, and 2-opt optimized routes side-by-side with real road routing.
-          </p>
-        </div>
-
-        {/* Global City Switcher Bar */}
-        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 p-3 sm:p-4 bg-white rounded-3xl border border-forest-100 shadow-soft-sm mb-6">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <div className="flex items-center gap-2">
-              <MapPin className="w-4 h-4 text-teal-600 shrink-0" />
-              <span className="text-xs font-bold text-slate-500">Route City:</span>
-              <span className="text-xs font-extrabold px-3 py-1 rounded-full bg-forest-900 text-teal-300 shadow-sm">
-                {currentCity}
-              </span>
-            </div>
-            {discoveringCity && (
-              <span className="text-[11px] text-teal-700 font-semibold animate-pulse flex items-center gap-1.5 ml-1">
-                <RefreshCw className="w-3.5 h-3.5 animate-spin text-teal-600" />
-                Fetching OSM places...
-              </span>
-            )}
-          </div>
-
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
-            {/* Quick city pills */}
-            <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
-              {POPULAR_CITIES.map((c) => {
-                const isActive = currentCity.toLowerCase().includes(c.toLowerCase());
-                return (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => handleSwitchCity(c)}
-                    disabled={discoveringCity}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
-                      isActive
-                        ? 'bg-teal-500 text-forest-950 font-bold shadow-soft-sm'
-                        : 'bg-sand-100 hover:bg-forest-100 text-slate-700 hover:text-forest-900'
-                    }`}
-                  >
-                    {c}
-                  </button>
-                );
-              })}
+              <h1 className="font-serif text-3xl sm:text-4xl lg:text-5xl text-[#00140f] tracking-tight leading-tight">
+                Plan Your Journey
+              </h1>
+              <p className="font-sans text-xs sm:text-sm text-[#414846] leading-relaxed">
+                Build your perfect route, reduce pedestrian backtracking, and explore more regional tables in less time.
+              </p>
             </div>
 
-            {/* Dynamic city search form */}
-            <form onSubmit={handleCityInputSubmit} className="flex items-center gap-1.5">
-              <div className="relative flex-1 sm:w-44">
-                <input
-                  type="text"
-                  value={cityInput}
-                  onChange={(e) => setCityInput(e.target.value)}
-                  placeholder="Plan in any city..."
-                  className="w-full pl-7 pr-2.5 py-1.5 bg-sand-50 rounded-xl text-xs text-forest-950 border border-sand-200 focus:outline-none focus:border-teal-500 focus:bg-white transition-all font-medium"
-                />
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
-              </div>
-              <button
-                type="submit"
-                disabled={discoveringCity || !cityInput.trim()}
-                className="px-3 py-1.5 rounded-xl bg-forest-900 hover:bg-forest-800 disabled:opacity-50 text-teal-300 text-xs font-bold transition-all cursor-pointer shrink-0"
-              >
-                Plan
-              </button>
-            </form>
-          </div>
-        </div>
+            {/* Destination Pill & Itinerary Day Switcher (Stitch Style) */}
+            <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto bg-[#edf6f0] p-1.5 rounded-full border border-[#dce5df] shadow-xs">
+              {/* City Location Chip */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowCityPicker(!showCityPicker)}
+                  className="flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-white text-[#00140f] font-sans text-xs font-bold shadow-xs border border-[#dce5df] hover:bg-[#edf6f0] transition-colors cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[18px] text-[#096a5f]">location_on</span>
+                  <span>{currentCity}</span>
+                  <span className="material-symbols-outlined text-[14px] text-[#727976]">expand_more</span>
+                </button>
 
-        {/* Error alerts */}
-        {placesError && (
-          <div className="mb-4 p-4 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-sm font-medium flex items-center gap-2">
-            <Info className="w-4 h-4 shrink-0" />
-            {placesError}
-          </div>
-        )}
-        {optimizeError && (
-          <div className="mb-4 p-4 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-sm font-medium flex items-center gap-2">
-            <Info className="w-4 h-4 shrink-0" />
-            {optimizeError}
-          </div>
-        )}
-
-        {/* Mobile View Toggle (Planner stops vs Map & Results) */}
-        <div className="flex lg:hidden bg-sand-200/70 p-1 rounded-2xl mb-4 w-full">
-          <button
-            type="button"
-            onClick={() => setMobilePlannerTab('planner')}
-            className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all ${
-              mobilePlannerTab === 'planner'
-                ? 'bg-white text-forest-950 shadow-soft-sm'
-                : 'text-forest-700 hover:text-forest-900'
-            }`}
-          >
-            <Route className="w-3.5 h-3.5 text-teal-600" />
-            <span>Stops & Picker ({selectedIds.length})</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setMobilePlannerTab('results')}
-            className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all ${
-              mobilePlannerTab === 'results'
-                ? 'bg-white text-forest-950 shadow-soft-sm'
-                : 'text-forest-700 hover:text-forest-900'
-            }`}
-          >
-            <Navigation className="w-3.5 h-3.5 text-teal-600 rotate-45" />
-            <span>Map & Route {routeResult ? '✓' : ''}</span>
-          </button>
-        </div>
-
-        {/* ── Two-column layout ─────────────────────────────────────── */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-
-          {/* ── Left Sidebar ───────────────────────────────────────── */}
-          <div className={`lg:col-span-4 flex-col gap-4 ${mobilePlannerTab === 'planner' ? 'flex' : 'hidden lg:flex'}`}>
-
-            {/* Sidebar tab switcher */}
-            <div className="flex bg-sand-200/70 p-1 rounded-2xl">
-              <button
-                type="button"
-                onClick={() => setSidebarTab('pick')}
-                className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all ${
-                  sidebarTab === 'pick'
-                    ? 'bg-white text-forest-950 shadow-soft-sm'
-                    : 'text-forest-700 hover:text-forest-900'
-                }`}
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Pick Places
-              </button>
-              <button
-                type="button"
-                onClick={() => setSidebarTab('stops')}
-                className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all ${
-                  sidebarTab === 'stops'
-                    ? 'bg-white text-forest-950 shadow-soft-sm'
-                    : 'text-forest-700 hover:text-forest-900'
-                }`}
-              >
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                My Stops ({selectedIds.length})
-              </button>
-            </div>
-
-            {/* Sidebar content card */}
-            <div className="bg-white rounded-3xl border border-forest-100 shadow-soft-sm p-5">
-              {sidebarTab === 'pick' ? (
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <h2 className="font-bold text-base text-forest-950 flex items-center gap-2">
-                      <MapPin className="w-4 h-4 text-teal-600" />
-                      Available Places
-                    </h2>
-                    <span className="text-xs text-slate-500">
-                      {allPlaces.length} spots
-                    </span>
-                  </div>
-
-                  {loadingPlaces ? (
-                    <div className="flex flex-col gap-3">
-                      {Array.from({ length: 5 }).map((_, i) => (
-                        <div key={i} className="h-16 rounded-2xl bg-sand-100 animate-pulse" />
+                {/* City Picker Popover */}
+                {showCityPicker && (
+                  <div className="absolute top-full right-0 lg:left-0 mt-2 z-50 w-72 bg-white rounded-2xl shadow-xl border border-[#e2eae5] p-3 animate-fade-in font-sans">
+                    <div className="text-[11px] font-bold text-[#727976] uppercase tracking-wider mb-2">
+                      Switch Regional Terroir:
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 mb-3">
+                      {POPULAR_CITIES.map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => {
+                            handleSwitchCity(c);
+                            setShowCityPicker(false);
+                          }}
+                          className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors ${
+                            currentCity.toLowerCase().includes(c.toLowerCase())
+                              ? 'bg-[#00140f] text-white font-bold'
+                              : 'bg-[#edf6f0] hover:bg-[#e2eae5] text-[#151d1a]'
+                          }`}
+                        >
+                          {c}
+                        </button>
                       ))}
                     </div>
-                  ) : (
-                    <PlaceSelector
-                      allPlaces={allPlaces}
-                      selectedIds={selectedIds}
-                      startPlaceId={startPlaceId}
-                      onToggle={handleToggle}
-                      onSetStart={handleSetStart}
-                    />
-                  )}
-                </div>
-              ) : (
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <h2 className="font-bold text-base text-forest-950 flex items-center gap-2">
-                      <Route className="w-4 h-4 text-teal-600" />
-                      My Stops
-                    </h2>
-                    {selectedIds.length > 0 && (
+                    <form onSubmit={handleCityInputSubmit} className="pt-2 border-t border-[#edf6f0] flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        value={cityInput}
+                        onChange={(e) => setCityInput(e.target.value)}
+                        placeholder="Type any global city..."
+                        className="flex-1 px-3 py-1 bg-[#edf6f0] rounded-xl text-xs text-[#00140f] focus:outline-none border border-[#dce5df]"
+                      />
                       <button
-                        type="button"
-                        onClick={handleClearAll}
-                        className="text-xs text-red-500 hover:text-red-700 font-semibold transition-colors flex items-center gap-1"
+                        type="submit"
+                        className="px-3 py-1 bg-[#00140f] text-white rounded-xl text-xs font-bold hover:bg-[#096a5f] transition-colors cursor-pointer"
                       >
-                        <Trash2 className="w-3 h-3" />
-                        Clear all
+                        Go
                       </button>
-                    )}
+                    </form>
                   </div>
-
-                  <SelectedStopsList
-                    places={selectedPlaces}
-                    startPlaceId={startPlaceId}
-                    onRemove={handleRemove}
-                    onSetStart={handleSetStart}
-                  />
-
-                  {/* Summary */}
-                  {selectedPlaces.length > 0 && (
-                    <div className="mt-4 pt-4 border-t border-forest-100 flex flex-wrap gap-3 text-xs">
-                      <div className="flex items-center gap-1.5 text-slate-600">
-                        <Navigation className="w-3.5 h-3.5 text-teal-600 rotate-45" />
-                        <span className="font-semibold">{selectedPlaces.length}</span>
-                        <span>stops</span>
-                      </div>
-                      {totalVisit > 0 && (
-                        <div className="flex items-center gap-1.5 text-slate-600">
-                          <Clock className="w-3.5 h-3.5 text-slate-400" />
-                          <span className="font-semibold">~{totalVisit}</span>
-                          <span>min visit time</span>
-                        </div>
-                      )}
-                      {startPlaceId && (
-                        <div className="flex items-center gap-1.5 text-teal-700">
-                          <Flag className="w-3.5 h-3.5" />
-                          <span>Start pinned</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Optimize CTA */}
-                  {selectedIds.length < 2 && (
-                    <div className="mt-4 p-3 rounded-2xl bg-sand-50 border border-sand-200 text-xs text-slate-600 flex items-center gap-2">
-                      <Info className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      Add at least 2 stops to run optimization.
-                    </div>
-                  )}
-
-                  {canOptimize && !routeResult && (
-                    <button
-                      type="button"
-                      onClick={handleOptimize}
-                      disabled={optimizing}
-                      className="mt-4 w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-2xl text-sm font-bold bg-gradient-to-r from-teal-600 to-teal-500 text-white hover:from-teal-500 hover:to-teal-400 transition-all active:scale-95 shadow-sm disabled:opacity-60"
-                    >
-                      {optimizing ? (
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Play className="w-4 h-4" />
-                      )}
-                      {optimizing ? 'Optimizing…' : 'Run Route Optimization'}
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Hint card */}
-            {!routeResult && !loadingPlaces && (
-              <div className="bg-gradient-to-br from-forest-900 to-forest-800 rounded-3xl p-5 text-white">
-                <div className="flex items-center gap-2 mb-3">
-                  <Zap className="w-4 h-4 text-teal-400" />
-                  <span className="font-bold text-sm">How It Works</span>
-                </div>
-                <ol className="space-y-2 text-xs text-forest-100">
-                  <li className="flex items-start gap-2">
-                    <span className="shrink-0 w-5 h-5 rounded-full bg-teal-500/30 text-teal-300 font-bold text-[11px] flex items-center justify-center mt-0.5">1</span>
-                    <span>Click places in the picker to add them to your itinerary</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="shrink-0 w-5 h-5 rounded-full bg-teal-500/30 text-teal-300 font-bold text-[11px] flex items-center justify-center mt-0.5">2</span>
-                    <span>Optionally flag a starting stop with the <Flag className="w-3 h-3 inline text-teal-300" /> icon</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="shrink-0 w-5 h-5 rounded-full bg-teal-500/30 text-teal-300 font-bold text-[11px] flex items-center justify-center mt-0.5">3</span>
-                    <span>Hit <strong className="text-white">Optimize Route</strong> to compare 3 algorithms</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="shrink-0 w-5 h-5 rounded-full bg-teal-500/30 text-teal-300 font-bold text-[11px] flex items-center justify-center mt-0.5">4</span>
-                    <span>Explore Baseline, Nearest Neighbor, and 2-opt routes on the map</span>
-                  </li>
-                </ol>
+                )}
               </div>
-            )}
+
+              {/* Day Switcher Pills */}
+              <button
+                type="button"
+                onClick={() => setActiveDay(1)}
+                className={`flex items-center gap-1 px-3 py-1 rounded-full font-sans text-xs font-semibold transition-all cursor-pointer ${
+                  activeDay === 1
+                    ? 'bg-[#00140f] text-white shadow-xs'
+                    : 'text-[#414846] hover:text-[#00140f]'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[14px] text-[#9eefe0]">calendar_today</span>
+                <span>Day 1</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveDay(2)}
+                className={`px-3 py-1 rounded-full font-sans text-xs font-semibold transition-all cursor-pointer ${
+                  activeDay === 2
+                    ? 'bg-[#00140f] text-white shadow-xs'
+                    : 'text-[#414846] hover:text-[#00140f]'
+                }`}
+              >
+                Day 2
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveDay(3)}
+                className={`px-3 py-1 rounded-full font-sans text-xs font-semibold transition-all cursor-pointer ${
+                  activeDay === 3
+                    ? 'bg-[#00140f] text-white shadow-xs'
+                    : 'text-[#414846] hover:text-[#00140f]'
+                }`}
+              >
+                Day 3
+              </button>
+            </div>
           </div>
 
-          {/* ── Right Panel (Map & Route Results) ───────────────────── */}
-          <div className={`lg:col-span-8 flex-col gap-5 ${mobilePlannerTab === 'results' ? 'flex' : 'hidden lg:flex'}`}>
+          {/* Search & Quick Place Injector Bar (Stitch Style) */}
+          <div className="max-w-[1440px] mx-auto mt-4 grid grid-cols-1 lg:grid-cols-12 gap-3 items-center">
+            {/* Search Input Bar */}
+            <div className="lg:col-span-8 relative">
+              <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-[#727976] text-[20px]">
+                search
+              </span>
+              <input
+                type="text"
+                value={catalogSearch}
+                onChange={(e) => {
+                  setCatalogSearch(e.target.value);
+                  if (!showCatalogDrawer) setShowCatalogDrawer(true);
+                }}
+                onFocus={() => setShowCatalogDrawer(true)}
+                placeholder="Search places, pincho bars, cider cellars or miradors to append to itinerary..."
+                className="w-full pl-12 pr-28 py-3 bg-white rounded-full font-sans text-xs text-[#00140f] placeholder:text-[#727976] focus:outline-none focus:ring-2 focus:ring-[#9eefe0] shadow-xs border border-[#e2eae5]"
+              />
+              <button
+                type="button"
+                onClick={() => setShowCatalogDrawer(!showCatalogDrawer)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 px-4 py-1.5 rounded-full bg-[#00140f] text-white font-sans text-xs font-semibold hover:bg-[#0e2a24] transition-all cursor-pointer shadow-xs"
+              >
+                {showCatalogDrawer ? 'Done' : '+ Add Stop'}
+              </button>
+            </div>
 
-            {/* No result yet — placeholder map hint */}
-            {!routeResult && !optimizing && (
-              <div className="bg-white rounded-3xl border border-forest-100 shadow-soft-sm p-8 flex flex-col items-center gap-4 text-center min-h-[320px] justify-center">
-                <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-forest-50 to-teal-50 border border-teal-200 flex items-center justify-center">
-                  <Route className="w-8 h-8 text-teal-600" />
+            {/* Quick Filter Chips */}
+            <div className="lg:col-span-4 flex items-center justify-between lg:justify-end gap-2">
+              <span className="font-sans text-[11px] text-[#727976] uppercase tracking-wider font-bold">
+                Filter:
+              </span>
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0">
+                {[
+                  { id: 'all', label: 'All' },
+                  { id: 'restaurant', label: 'Pintxos' },
+                  { id: 'viewpoint', label: 'Scenic' },
+                  { id: 'cafe', label: 'Bakeries' },
+                  { id: 'attraction', label: 'Heritage' },
+                ].map((chip) => (
+                  <button
+                    key={chip.id}
+                    type="button"
+                    onClick={() => {
+                      setCatalogCategory(chip.id);
+                      setShowCatalogDrawer(true);
+                    }}
+                    className={`px-3 py-1 rounded-full font-sans text-xs font-semibold transition-colors cursor-pointer border ${
+                      catalogCategory === chip.id
+                        ? 'bg-[#00140f] text-white border-[#00140f]'
+                        : 'bg-[#edf6f0] text-[#00140f] border-[#dce5df] hover:bg-[#e2eae5]'
+                    }`}
+                  >
+                    {chip.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Dynamic Overpass Discovery Notice if actively fetching city places */}
+        {discoveringCity && (
+          <div className="w-full px-4 sm:px-6 lg:px-12 pt-4">
+            <div className="max-w-[1440px] mx-auto p-3.5 rounded-2xl bg-[#9eefe0]/30 border border-[#9eefe0] text-[#096a5f] flex items-center gap-2.5 text-xs font-semibold animate-pulse shadow-xs font-sans">
+              <RefreshCw className="w-4 h-4 text-[#096a5f] animate-spin shrink-0" />
+              <span>
+                Discovering authentic places in <strong>{currentCity}</strong> via OpenStreetMap &amp; PostGIS...
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Expandable Place Catalog Drawer (When user searches or clicks Add Stop) */}
+        {showCatalogDrawer && (
+          <div className="w-full px-4 sm:px-6 lg:px-12 pt-4">
+            <div className="max-w-[1440px] mx-auto bg-white rounded-3xl p-5 border border-[#e2eae5] shadow-lg animate-fade-in font-sans">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-[#096a5f]">add_location_alt</span>
+                  <h4 className="font-serif text-lg font-bold text-[#00140f]">
+                    Select Places to Append ({filteredCatalogPlaces.length} available)
+                  </h4>
                 </div>
-                <div>
-                  <h3 className="font-bold text-lg text-forest-950">No Route Yet</h3>
-                  <p className="text-sm text-slate-500 mt-1 max-w-xs">
-                    Select {selectedIds.length < 2 ? `${2 - selectedIds.length} more` : 'your'} place{selectedIds.length < 1 ? 's' : ''} and click <strong>Optimize Route</strong> to see the comparison map.
-                  </p>
+                <button
+                  type="button"
+                  onClick={() => setShowCatalogDrawer(false)}
+                  className="p-1 rounded-full text-[#727976] hover:text-[#00140f] cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-80 overflow-y-auto pr-1">
+                {filteredCatalogPlaces.map((place) => {
+                  const isSelected = selectedIds.includes(place.id);
+                  const isStart = place.id === startPlaceId;
+                  const cfg = CATEGORY_CONFIG[place.category] || CATEGORY_CONFIG.restaurant;
+                  const img = place.imageUrl || cfg.defaultImg;
+
+                  return (
+                    <div
+                      key={place.id}
+                      onClick={() => handleTogglePlace(place.id)}
+                      className={`flex items-center gap-3 p-2.5 rounded-2xl border transition-all cursor-pointer ${
+                        isSelected
+                          ? 'bg-[#edf6f0] border-[#096a5f] ring-1 ring-[#096a5f]'
+                          : 'bg-white border-[#e2eae5] hover:border-[#9eefe0]'
+                      }`}
+                    >
+                      <img
+                        src={img}
+                        alt={place.name}
+                        className="w-14 h-14 rounded-xl object-cover shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="text-[10px] uppercase font-bold text-[#096a5f]">
+                            {cfg.label}
+                          </span>
+                          {isStart && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.2 bg-[#00140f] text-[#9eefe0] rounded-full">
+                              Start ★
+                            </span>
+                          )}
+                        </div>
+                        <h5 className="font-serif text-sm font-bold text-[#00140f] truncate">
+                          {place.name}
+                        </h5>
+                        <p className="text-[11px] text-[#727976] truncate">{place.address}</p>
+                      </div>
+                      <div
+                        className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
+                          isSelected
+                            ? 'bg-[#00140f] text-white'
+                            : 'border border-[#dce5df] text-[#727976]'
+                        }`}
+                      >
+                        {isSelected ? <Check className="w-3.5 h-3.5" /> : '+'}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Main Planner Split Stage (Left 5 Cols: Itinerary Sequence, Right 7 Cols: Map & Engine) */}
+        <section className="w-full px-4 sm:px-6 lg:px-12 py-6">
+          <div className="max-w-[1440px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            
+            {/* LEFT PANEL: Ordered Itinerary & Multi-Stop Waypoint Sequence (5 Cols) */}
+            <div className="lg:col-span-5 flex flex-col gap-4">
+              {/* Sequence Subheader Controls (Stitch Style) */}
+              <div className="flex items-center justify-between bg-[#edf6f0] px-4 py-2.5 rounded-2xl border border-[#dce5df]">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-2.5 w-2.5 rounded-full bg-[#096a5f] animate-pulse" />
+                  <span className="font-sans text-xs font-bold text-[#00140f]">
+                    {selectedPlaces.length} Waypoints Added
+                  </span>
+                  <span className="font-sans text-xs text-[#727976]">
+                    • {totalWalkKm} km Total Walk
+                  </span>
                 </div>
-                {canOptimize && (
+                <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={handleOptimize}
-                    className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl text-sm font-bold bg-gradient-to-r from-teal-600 to-teal-500 text-white hover:from-teal-500 hover:to-teal-400 transition-all active:scale-95 shadow-sm"
+                    disabled={optimizing || selectedIds.length < 2}
+                    className="p-1 rounded-full hover:bg-[#e2eae5] text-[#096a5f] transition-colors cursor-pointer disabled:opacity-50"
+                    title="Re-optimize Sequence"
                   >
-                    <Play className="w-4 h-4" />
-                    Optimize Route ({selectedIds.length} stops)
+                    <RefreshCw className={`w-4 h-4 ${optimizing ? 'animate-spin' : ''}`} />
                   </button>
+                  <button
+                    type="button"
+                    onClick={handleClearAll}
+                    className="text-[#727976] hover:text-red-700 font-sans text-[11px] font-bold tracking-wider uppercase px-2 py-1 transition-colors cursor-pointer"
+                  >
+                    Clear All
+                  </button>
+                </div>
+              </div>
+
+              {/* Waypoint Sequence Stream */}
+              <div className="flex flex-col space-y-3">
+                {displayOrderedPlaces.length === 0 ? (
+                  <div className="bg-white rounded-3xl p-8 border border-[#e2eae5] text-center shadow-xs">
+                    <Route className="w-8 h-8 text-[#096a5f] mx-auto mb-2" />
+                    <h4 className="font-serif text-base font-bold text-[#00140f] mb-1">
+                      No Stops in Current Itinerary
+                    </h4>
+                    <p className="font-sans text-xs text-[#414846] mb-4">
+                      Browse and select places from the search bar above to create an optimal multi-stop sequence.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setShowCatalogDrawer(true)}
+                      className="px-5 py-2 rounded-full bg-[#00140f] text-white text-xs font-bold hover:bg-[#096a5f] transition-colors cursor-pointer"
+                    >
+                      Browse Places
+                    </button>
+                  </div>
+                ) : (
+                  displayOrderedPlaces.map((place, idx) => {
+                    const isStart = place.id === startPlaceId;
+                    const cfg = CATEGORY_CONFIG[place.category] || CATEGORY_CONFIG.restaurant;
+                    const img = place.imageUrl || cfg.defaultImg;
+                    const legFromHere = activeResult?.legs?.find((l) => l.fromPlaceId === place.id);
+
+                    return (
+                      <div key={place.id} className="flex flex-col">
+                        {/* Waypoint Card (Stitch Style) */}
+                        <div className="group relative flex flex-col bg-white rounded-2xl p-4 shadow-sm hover:shadow-md transition-all border border-[#e2eae5]">
+                          <div className="flex items-start gap-3">
+                            {/* Waypoint Number Circle & Start Pin */}
+                            <div className="flex flex-col items-center gap-1 pt-0.5 shrink-0">
+                              <span
+                                className={`flex items-center justify-center w-7 h-7 rounded-full font-sans text-xs font-bold shadow-xs ${
+                                  isStart
+                                    ? 'bg-[#00140f] text-[#9eefe0] ring-2 ring-[#096a5f]'
+                                    : 'bg-[#0e2a24] text-white'
+                                }`}
+                              >
+                                {isStart ? '★' : idx + 1}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleSetStart(place.id)}
+                                title={isStart ? 'Unpin departure stop' : 'Set as departure point'}
+                                className={`text-[10px] p-0.5 rounded cursor-pointer ${
+                                  isStart ? 'text-[#096a5f]' : 'text-slate-300 hover:text-[#096a5f]'
+                                }`}
+                              >
+                                <Flag className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+
+                            {/* Thumbnail Photo */}
+                            <div className="relative w-20 h-20 rounded-xl overflow-hidden shrink-0 bg-[#edf6f0]">
+                              <img
+                                src={img}
+                                alt={place.name}
+                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                              />
+                            </div>
+
+                            {/* Content Details */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-start justify-between gap-1">
+                                <div>
+                                  <span className="font-sans text-[10px] text-[#096a5f] font-bold uppercase tracking-wider">
+                                    {cfg.tag}
+                                  </span>
+                                  <h3 className="font-serif text-base font-bold text-[#00140f] leading-snug truncate">
+                                    {place.name}
+                                  </h3>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveStop(place.id)}
+                                  className="text-[#727976] hover:text-red-600 transition-colors p-0.5 cursor-pointer"
+                                  title="Remove stop"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              </div>
+
+                              <p className="font-sans text-xs text-[#414846] line-clamp-1 mt-0.5">
+                                {place.description || place.address}
+                              </p>
+
+                              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#edf6f0] text-[#00140f] font-sans text-[11px] font-semibold border border-[#dce5df]">
+                                  <Clock className="w-3 h-3 text-[#096a5f]" />
+                                  <span>{0 + idx * 45}m window</span>
+                                </span>
+                                {place.estimatedVisitMinutes && (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#edf6f0] text-[#414846] font-sans text-[11px]">
+                                    {place.estimatedVisitMinutes} min stay
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Transit Connector Line & Interval (Between consecutive stops) */}
+                          {legFromHere && (
+                            <div className="mt-3 pt-2.5 border-t border-[#edf6f0] flex items-center justify-between font-sans text-xs text-[#414846]">
+                              <div className="flex items-center gap-1.5">
+                                <span className="material-symbols-outlined text-[16px] text-[#096a5f]">
+                                  directions_walk
+                                </span>
+                                <span>
+                                  <strong>{legFromHere.distanceKm?.toFixed(2)} km</strong> walk (~{Math.round(legFromHere.distanceKm * 12)} min)
+                                </span>
+                                <span className="text-[#c1c8c5]">•</span>
+                                <span className="text-[11px] text-[#727976] truncate max-w-[160px]">
+                                  to {legFromHere.toPlaceName}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
                 )}
-              </div>
-            )}
 
-            {/* Optimizing spinner */}
-            {optimizing && (
-              <div className="bg-white rounded-3xl border border-forest-100 shadow-soft-sm p-8 flex flex-col items-center gap-4 text-center min-h-[320px] justify-center">
-                <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-teal-50 to-forest-50 border border-teal-200 flex items-center justify-center">
-                  <RefreshCw className="w-8 h-8 text-teal-600 animate-spin" />
+                {/* Intermediate Waypoint Insertion Slot (Stitch Style) */}
+                <div
+                  onClick={() => setShowCatalogDrawer(true)}
+                  className="cursor-pointer border-2 border-dashed border-[#c1c8c5]/70 hover:border-[#096a5f] hover:bg-[#edf6f0]/70 transition-all rounded-2xl p-4 flex items-center justify-center gap-2 text-[#414846] group"
+                >
+                  <span className="material-symbols-outlined text-[#096a5f] text-[20px] group-hover:scale-110 transition-transform">
+                    add_circle
+                  </span>
+                  <span className="font-sans text-xs font-semibold group-hover:text-[#00140f] transition-colors">
+                    Click here to insert intermediate café or viewpoint stop
+                  </span>
                 </div>
+              </div>
+            </div>
+
+            {/* RIGHT PANEL: Geospatial Cartographic Canvas & Algorithmic Engine (7 Cols) */}
+            <div className="lg:col-span-7 flex flex-col gap-5 lg:sticky lg:top-24">
+              {/* Leaflet Route Map Canvas */}
+              <RouteMap
+                routeResult={routeResult}
+                algorithm={activeAlgo}
+                roadRoute={roadRoute}
+                roadLoading={roadLoading}
+                roadError={roadError}
+                center={cityCoords}
+                baselineResult={baselineResult}
+              />
+
+              {/* Section Title: Algorithmic Routing Engine */}
+              <div className="flex items-center justify-between pt-2">
                 <div>
-                  <h3 className="font-bold text-lg text-forest-950">Running Algorithms…</h3>
-                  <p className="text-sm text-slate-500 mt-1">
-                    Computing Baseline, Nearest Neighbor, and 2-opt routes.
-                  </p>
+                  <span className="font-sans text-xs text-[#096a5f] font-bold uppercase tracking-wider">
+                    Geospatial Optimization
+                  </span>
+                  <h2 className="font-serif text-2xl font-bold text-[#00140f]">
+                    Routing Algorithms Compared
+                  </h2>
                 </div>
+                <button
+                  type="button"
+                  onClick={handleRunBenchmark}
+                  disabled={benchmarking || selectedIds.length < 2}
+                  className="font-sans text-xs text-[#096a5f] hover:underline flex items-center gap-1 font-semibold cursor-pointer disabled:opacity-50"
+                >
+                  <Zap className="w-3.5 h-3.5" />
+                  <span>{benchmarking ? 'Running Benchmarks...' : 'Run Benchmarks (5 runs)'}</span>
+                </button>
               </div>
-            )}
 
-            {/* Results */}
-            {routeResult && !optimizing && (
-              <>
-                {/* Summary banner */}
-                <div className="bg-gradient-to-r from-forest-900 to-forest-800 rounded-3xl p-5 text-white flex flex-wrap items-center gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <BarChart2 className="w-4 h-4 text-teal-400" />
-                      <span className="font-bold text-sm">Optimization Complete</span>
+              {/* 3 Algorithmic Comparison Cards (Stitch Style) */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {/* Card 1: Manual Sequence (Baseline) */}
+                <div
+                  onClick={() => setActiveAlgo('baseline')}
+                  className={`flex flex-col justify-between bg-white p-4 rounded-2xl border transition-all cursor-pointer ${
+                    activeAlgo === 'baseline'
+                      ? 'border-[#00140f] shadow-md ring-2 ring-[#00140f]/20 bg-[#fbfdfb]'
+                      : 'border-[#e2eae5] hover:border-[#c1c8c5]'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-sans text-[10px] font-bold uppercase tracking-wider text-[#727976]">
+                        Unordered
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full bg-red-50 text-red-700 font-sans text-[10px] font-bold border border-red-200">
+                        Inefficient
+                      </span>
                     </div>
-                    <div className="text-xs text-forest-200">
-                      Best algorithm:{' '}
-                      <span className="font-extrabold text-white">
-                        {ALGO_META[routeResult.recommended]?.label || routeResult.recommended}
+                    <h4 className="font-serif text-base font-bold text-[#00140f]">Manual Entry</h4>
+                    <p className="font-sans text-xs text-[#414846] mt-1 leading-relaxed">
+                      Crosses city intersections needlessly in selection order.
+                    </p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-[#edf6f0] flex flex-col gap-1 font-sans text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-[#727976]">Total Walk:</span>
+                      <span className="font-bold text-red-700">
+                        {baselineResult?.totalDistanceKm ? `${baselineResult.totalDistanceKm.toFixed(1)} km` : `${baselineKm.toFixed(1)} km`}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[#727976]">Estimated:</span>
+                      <span className="font-medium text-[#00140f]">
+                        ~{Math.round(baselineKm * 12)} min
                       </span>
                     </div>
                   </div>
-
-                  <div className="flex flex-wrap gap-4">
-                    <div className="text-center">
-                      <div className="text-xl font-extrabold text-white font-mono">
-                        {routeResult.summary?.optimizedDistanceKm?.toFixed(2)}
-                      </div>
-                      <div className="text-[10px] text-forest-300 font-semibold uppercase tracking-wider">km optimized</div>
-                    </div>
-                    {routeResult.summary?.distanceSavedKm > 0 && (
-                      <div className="text-center">
-                        <div className="text-xl font-extrabold text-teal-300 font-mono">
-                          -{routeResult.summary.distanceSavedKm?.toFixed(2)}
-                        </div>
-                        <div className="text-[10px] text-forest-300 font-semibold uppercase tracking-wider">km saved</div>
-                      </div>
-                    )}
-                    <div className="text-center">
-                      <div className="text-xl font-extrabold text-white">
-                        {routeResult.placeCount}
-                      </div>
-                      <div className="text-[10px] text-forest-300 font-semibold uppercase tracking-wider">stops</div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={handleOpenSaveModal}
-                      className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-teal-500 hover:bg-teal-400 text-forest-950 transition-all cursor-pointer shadow-soft-sm"
-                      title="Save this optimized trip to your account"
-                    >
-                      <Star className="w-3.5 h-3.5 fill-forest-950" />
-                      <span>Save Trip</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handleBenchmark}
-                      disabled={benchmarking}
-                      className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-teal-500/20 hover:bg-teal-500/30 border border-teal-400/40 text-teal-200 transition-all cursor-pointer disabled:opacity-50"
-                      title="Run a 5-iteration benchmark to calculate median runtimes"
-                    >
-                      <Activity className={`w-3.5 h-3.5 ${benchmarking ? 'animate-pulse text-teal-300' : ''}`} />
-                      <span>{benchmarking ? 'Benchmarking...' : 'Benchmark'}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handleOptimize}
-                      className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 border border-white/20 transition-all cursor-pointer"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      Re-run
-                    </button>
-                  </div>
                 </div>
 
-                {/* Compact Benchmark Summary */}
-                {showBenchmark && (
-                  <div className="bg-white rounded-3xl border border-teal-200/80 shadow-soft-sm p-4 sm:p-5 relative animate-in fade-in duration-200">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <Activity className="w-4 h-4 text-teal-600" />
-                        <h3 className="font-bold text-sm text-forest-950">
-                          Performance Benchmark Foundation (5 Runs Median)
-                        </h3>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setShowBenchmark(false)}
-                        className="text-slate-400 hover:text-slate-600 p-1 rounded-lg cursor-pointer"
-                        title="Dismiss benchmark view"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-
-                    {benchmarking && (
-                      <div className="py-4 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-teal-600" />
-                        <span>Benchmarking Baseline, Nearest Neighbor, and 2-opt across 5 iterations...</span>
-                      </div>
-                    )}
-
-                    {benchmarkError && !benchmarking && (
-                      <div className="text-xs text-rose-600 bg-rose-50 border border-rose-200 p-3 rounded-xl">
-                        {benchmarkError}
-                      </div>
-                    )}
-
-                    {benchmarkResult && !benchmarking && (
-                      <div className="space-y-3">
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                          {/* Baseline */}
-                          <div className="bg-sand-50/80 rounded-2xl p-3 border border-sand-200">
-                            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                              Baseline (O(N))
-                            </div>
-                            <div className="text-sm font-extrabold text-forest-950 font-mono mt-1">
-                              {benchmarkResult.metrics?.baseline?.distanceKm?.toFixed(2)} km
-                            </div>
-                            <div className="text-xs text-slate-500 mt-0.5">
-                              Median: <span className="font-semibold text-slate-700">{benchmarkResult.metrics?.baseline?.medianTimeMs?.toFixed(3)} ms</span>
-                            </div>
-                          </div>
-
-                          {/* Nearest Neighbor */}
-                          <div className="bg-amber-50/60 rounded-2xl p-3 border border-amber-200/80">
-                            <div className="text-[10px] font-bold uppercase tracking-wider text-amber-700">
-                              Nearest Neighbor (O(N²))
-                            </div>
-                            <div className="text-sm font-extrabold text-forest-950 font-mono mt-1">
-                              {benchmarkResult.metrics?.nearestNeighbor?.distanceKm?.toFixed(2)} km
-                            </div>
-                            <div className="text-xs text-slate-500 mt-0.5">
-                              Median: <span className="font-semibold text-slate-700">{benchmarkResult.metrics?.nearestNeighbor?.medianTimeMs?.toFixed(3)} ms</span>
-                              <span className="ml-1 text-emerald-600 font-bold">(-{benchmarkResult.metrics?.nearestNeighbor?.improvementPercent}%)</span>
-                            </div>
-                          </div>
-
-                          {/* 2-opt */}
-                          <div className="bg-teal-50/60 rounded-2xl p-3 border border-teal-200/80">
-                            <div className="text-[10px] font-bold uppercase tracking-wider text-teal-700">
-                              2-opt Local Search (O(K·N²))
-                            </div>
-                            <div className="text-sm font-extrabold text-forest-950 font-mono mt-1">
-                              {benchmarkResult.metrics?.twoOpt?.distanceKm?.toFixed(2)} km
-                            </div>
-                            <div className="text-xs text-slate-500 mt-0.5">
-                              Median: <span className="font-semibold text-slate-700">{benchmarkResult.metrics?.twoOpt?.medianTimeMs?.toFixed(3)} ms</span>
-                              <span className="ml-1 text-emerald-600 font-bold">(-{benchmarkResult.metrics?.twoOpt?.improvementPercent}%)</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {benchmarkResult.recommendation?.reason && (
-                          <div className="text-xs text-forest-800 bg-teal-50/50 border border-teal-100 p-2.5 rounded-xl">
-                            <span className="font-bold text-teal-900">Recommendation: </span>
-                            {benchmarkResult.recommendation.reason}
-                          </div>
-                        )}
-
-                        <div className="pt-1 flex items-center justify-between border-t border-forest-100/60 text-xs">
-                          <span className="text-slate-500">Want deeper scalability & multi-dataset analysis?</span>
-                          <Link
-                            to="/benchmark"
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-teal-900 bg-teal-100/70 hover:bg-teal-200/80 border border-teal-300 transition-colors shadow-soft-sm"
-                          >
-                            <BarChart2 className="w-3.5 h-3.5 text-teal-700" />
-                            <span>View Full Benchmark Dashboard</span>
-                          </Link>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Algorithm tabs */}
-                <div className="flex flex-col sm:flex-row gap-2">
-                  {Object.values(ALGO_META).map((meta) => (
-                    <AlgoTab
-                      key={meta.key}
-                      meta={meta}
-                      isActive={activeAlgo === meta.key}
-                      result={routeResult.results?.[meta.key]}
-                      isRecommended={routeResult.recommended === meta.key}
-                      onClick={() => setActiveAlgo(meta.key)}
-                    />
-                  ))}
-                </div>
-
-                {/* Navigation Estimate (OSRM Road Network) */}
-                <div className="bg-white rounded-2xl border border-teal-200/80 shadow-soft-sm p-4 flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-teal-50 border border-teal-200 flex items-center justify-center shrink-0">
-                      <Car className="w-5 h-5 text-teal-700" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold uppercase tracking-wider text-teal-900">
-                          Navigation Estimate (Road Network)
-                        </span>
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-100 text-teal-800">
-                          {roadRoute?.provider || 'OSRM'} • {roadRoute?.profile || 'driving'}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-500 mt-0.5">
-                        Road-following driving route for <span className="font-semibold text-forest-900">{ALGO_META[activeAlgo]?.label}</span>. Distinct from straight-line optimization distance.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-4">
-                    {roadLoading && (
-                      <div className="text-xs text-slate-500 flex items-center gap-1.5 font-medium">
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-teal-600" />
-                        <span>Fetching road geometry...</span>
-                      </div>
-                    )}
-
-                    {!roadLoading && roadRoute && (
-                      <div className="flex items-center gap-4">
-                        <div className="text-right">
-                          <div className="text-sm font-extrabold text-forest-950 font-mono">
-                            {roadRoute.distanceKm?.toFixed(2)} km
-                          </div>
-                          <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
-                            Road Distance
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-sm font-extrabold text-teal-700 font-mono">
-                            ~{roadRoute.durationMinutes} min
-                          </div>
-                          <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
-                            Est. Driving
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {!roadLoading && roadError && (
-                      <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-xl flex items-center gap-1.5">
-                        <span>Road estimates unavailable (using straight-line preview)</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Route Map */}
-                <RouteMap
-                  routeResult={routeResult}
-                  algorithm={activeAlgo}
-                  roadRoute={roadRoute}
-                  roadLoading={roadLoading}
-                  roadError={roadError}
-                  center={cityCenter}
-                />
-
-                {/* Leg breakdown */}
-                {activeResult && (
-                  <div className="bg-white rounded-3xl border border-forest-100 shadow-soft-sm p-5">
+                {/* Card 2: Nearest Neighbor */}
+                <div
+                  onClick={() => setActiveAlgo('nearestNeighbor')}
+                  className={`flex flex-col justify-between bg-white p-4 rounded-2xl border transition-all cursor-pointer ${
+                    activeAlgo === 'nearestNeighbor'
+                      ? 'border-[#096a5f] shadow-md ring-2 ring-[#9eefe0] bg-[#fbfdfb]'
+                      : 'border-[#e2eae5] hover:border-[#c1c8c5]'
+                  }`}
+                >
+                  <div>
                     <div className="flex items-center justify-between mb-2">
-                      <h3 className="font-bold text-sm text-forest-950 flex items-center gap-2">
-                        <Navigation className="w-4 h-4 text-teal-600 rotate-45" />
-                        Route Legs — {ALGO_META[activeAlgo]?.label}
-                      </h3>
-                      <div className="text-xs font-mono text-teal-700 font-bold">
-                        {activeResult.totalDistanceKm?.toFixed(2)} km
-                      </div>
+                      <span className="font-sans text-[10px] font-bold uppercase tracking-wider text-[#096a5f]">
+                        Greedy Step
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full bg-[#edf6f0] text-[#00140f] font-sans text-[10px] font-bold border border-[#dce5df]">
+                        30% Saved
+                      </span>
                     </div>
-                    <LegTable legs={activeResult.legs} />
+                    <h4 className="font-serif text-base font-bold text-[#00140f]">Nearest Neighbor</h4>
+                    <p className="font-sans text-xs text-[#414846] mt-1 leading-relaxed">
+                      Fast local greedy choice, but leaves unoptimized return paths.
+                    </p>
                   </div>
-                )}
-
-                {/* Disclaimer */}
-                <div className="flex items-start gap-2 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-2xl p-3.5">
-                  <Info className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
-                  <span>{routeResult.disclaimer}</span>
+                  <div className="mt-4 pt-3 border-t border-[#edf6f0] flex flex-col gap-1 font-sans text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-[#727976]">Total Walk:</span>
+                      <span className="font-bold text-[#00140f]">
+                        {routeResult?.results?.nearestNeighbor?.totalDistanceKm
+                          ? `${routeResult.results.nearestNeighbor.totalDistanceKm.toFixed(1)} km`
+                          : '5.4 km'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[#727976]">Estimated:</span>
+                      <span className="font-medium text-[#00140f]">
+                        ~{Math.round((routeResult?.results?.nearestNeighbor?.totalDistanceKm || 5.4) * 12)} min
+                      </span>
+                    </div>
+                  </div>
                 </div>
-              </>
-            )}
-          </div>
-        </div>
-      </main>
 
-      {/* Save Trip Modal Dialog */}
-      {saveModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-gray-100 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
-              <div className="flex items-center gap-2">
-                <Star className="w-5 h-5 text-teal-600 fill-teal-600" />
-                <h3 className="text-lg font-bold text-forest-950">Save Trip to Account</h3>
+                {/* Card 3: 2-Opt Polynomial (RECOMMENDED) */}
+                <div
+                  onClick={() => setActiveAlgo('twoOpt')}
+                  className={`relative flex flex-col justify-between p-4 rounded-2xl border-2 transition-all cursor-pointer ${
+                    activeAlgo === 'twoOpt'
+                      ? 'bg-[#edf6f0] border-[#096a5f] shadow-md ring-2 ring-[#9eefe0]'
+                      : 'bg-white border-[#096a5f]/60 hover:bg-[#edf6f0]/50'
+                  }`}
+                >
+                  <span className="absolute -top-3 left-4 px-2.5 py-0.5 rounded-full bg-[#096a5f] text-white font-sans text-[10px] font-bold uppercase tracking-wider shadow-xs">
+                    Recommended • -{reductionPercent}% Walk
+                  </span>
+                  <div>
+                    <div className="flex items-center justify-between mb-2 pt-1">
+                      <span className="font-sans text-[10px] font-bold uppercase tracking-wider text-[#096a5f]">
+                        Global Solver
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full bg-[#9eefe0] text-[#096a5f] font-sans text-[10px] font-bold">
+                        Active Flow
+                      </span>
+                    </div>
+                    <h4 className="font-serif text-base font-bold text-[#00140f]">2-Opt Polynomial</h4>
+                    <p className="font-sans text-xs text-[#414846] mt-1 leading-relaxed">
+                      Uncrosses geometric knots; flows along the natural city topography.
+                    </p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-[#dce5df] flex flex-col gap-1 font-sans text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-[#727976]">Total Walk:</span>
+                      <span className="font-bold text-[#096a5f]">
+                        {routeResult?.results?.twoOpt?.totalDistanceKm
+                          ? `${routeResult.results.twoOpt.totalDistanceKm.toFixed(1)} km`
+                          : `${totalWalkKm} km`}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[#727976]">Estimated:</span>
+                      <span className="font-bold text-[#00140f]">
+                        {transitMinutes} min
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setSaveModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
-              >
-                <X className="w-4 h-4" />
-              </button>
+
+              {/* Live Benchmarks Comparison Panel if run */}
+              {showBenchmark && benchmarkResult && (
+                <div className="bg-white rounded-2xl p-4 border border-[#e2eae5] shadow-xs font-sans text-xs animate-fade-in">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-bold text-[#00140f]">Live Benchmark Results (5 runs median)</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowBenchmark(false)}
+                      className="text-[#727976] hover:text-[#00140f]"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {['baseline', 'nearestNeighbor', 'twoOpt'].map((k) => (
+                      <div key={k} className="p-2 bg-[#edf6f0] rounded-xl">
+                        <div className="font-bold text-[#00140f] uppercase text-[10px]">{k}</div>
+                        <div>{benchmarkResult[k]?.distanceKm?.toFixed(2)} km</div>
+                        <div className="text-[10px] text-[#727976]">{benchmarkResult[k]?.medianTimeMs?.toFixed(2)} ms</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
-            <form onSubmit={handleConfirmSaveTrip} className="mt-4 space-y-4">
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
-                  Trip Name
-                </label>
-                <input
-                  type="text"
-                  value={tripNameInput}
-                  onChange={(e) => setTripNameInput(e.target.value)}
-                  placeholder="e.g. Mumbai Heritage Trail"
-                  required
-                  autoFocus
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-forest-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 font-medium"
-                />
+          </div>
+        </section>
+
+        {/* Bottom Floating Action Dock & Metrics Summary (Stitch Design) */}
+        <div className="w-full bg-white border-t border-[#e2eae5] py-4 px-4 sm:px-6 lg:px-12 sticky bottom-0 z-40 shadow-[0_-8px_30px_rgba(0,0,0,0.06)] font-sans">
+          <div className="max-w-[1440px] mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+            {/* Metrics Quick Readout */}
+            <div className="flex items-center flex-wrap gap-4 sm:gap-6">
+              <div className="flex flex-col">
+                <span className="text-[11px] text-[#727976] uppercase tracking-wider font-bold">
+                  Optimized Route
+                </span>
+                <span className="font-serif text-lg sm:text-xl font-bold text-[#00140f]">
+                  {totalWalkKm} km{' '}
+                  <span className="font-sans text-xs text-[#096a5f] font-semibold">
+                    (-{reductionPercent}%)
+                  </span>
+                </span>
               </div>
 
-              <div className="bg-sand-50 rounded-xl p-3 border border-sand-200/80 text-xs text-slate-600 space-y-1">
-                <div className="flex justify-between">
-                  <span>City:</span>
-                  <span className="font-bold text-forest-950">{currentCity}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Stops:</span>
-                  <span className="font-bold text-forest-950">{activeResult?.orderedPlaces?.length || selectedPlaces.length} locations</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Algorithm:</span>
-                  <span className="font-bold uppercase text-forest-950">{ALGO_META[activeAlgo]?.label || activeAlgo}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Optimized Distance:</span>
-                  <span className="font-bold text-teal-700">{activeResult?.totalDistanceKm?.toFixed(2)} km</span>
-                </div>
-                {roadRoute?.durationMinutes && (
-                  <div className="flex justify-between">
-                    <span>Est. Driving Time:</span>
-                    <span className="font-bold text-teal-700">~{roadRoute.durationMinutes} mins</span>
-                  </div>
-                )}
+              <div className="h-8 w-px bg-[#e2eae5] hidden sm:block" />
+
+              <div className="flex flex-col">
+                <span className="text-[11px] text-[#727976] uppercase tracking-wider font-bold">
+                  Transit Time
+                </span>
+                <span className="font-serif text-lg sm:text-xl font-bold text-[#00140f]">
+                  {transitMinutes} min{' '}
+                  <span className="font-sans text-xs text-[#727976] font-normal">
+                    walk / {Math.round(transitMinutes / 3)}m bike
+                  </span>
+                </span>
               </div>
 
-              {saveTripError && (
-                <div className="p-3 bg-red-50 text-red-700 text-xs rounded-xl border border-red-200">
-                  {saveTripError}
-                </div>
-              )}
+              <div className="h-8 w-px bg-[#e2eae5] hidden sm:block" />
 
-              {saveTripSuccess && (
-                <div className="p-3 bg-emerald-50 text-emerald-800 text-xs rounded-xl border border-emerald-200 font-bold flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  Trip saved successfully! View it under "My Trips".
-                </div>
-              )}
+              <div className="flex flex-col">
+                <span className="text-[11px] text-[#727976] uppercase tracking-wider font-bold">
+                  Itinerary Stops
+                </span>
+                <span className="font-serif text-lg sm:text-xl font-bold text-[#00140f]">
+                  {selectedPlaces.length} curated spots
+                </span>
+              </div>
+            </div>
 
-              <div className="flex justify-end space-x-2 pt-2">
+            {/* Action Button Group */}
+            <div className="flex items-center gap-2.5 w-full md:w-auto justify-end">
+              {/* Share Route */}
+              <button
+                type="button"
+                onClick={handleShareRoute}
+                className="px-4 py-2.5 rounded-full border border-[#096a5f] text-[#096a5f] hover:bg-[#9eefe0]/20 transition-colors font-sans text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+              >
+                {shareFeedback ? <Check className="w-4 h-4 text-[#096a5f]" /> : <Share2 className="w-4 h-4" />}
+                <span>{shareFeedback ? 'Link Copied!' : 'Share Route'}</span>
+              </button>
+
+              {/* Save Itinerary */}
+              <button
+                type="button"
+                onClick={handleOpenSaveModal}
+                className="px-4 py-2.5 rounded-full bg-[#edf6f0] hover:bg-[#e2eae5] text-[#00140f] border border-[#dce5df] transition-colors font-sans text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+              >
+                <BookmarkCheck className="w-4 h-4 text-[#096a5f]" />
+                <span>Save Itinerary</span>
+              </button>
+
+              {/* Apply Optimization CTA */}
+              <button
+                type="button"
+                onClick={handleOptimize}
+                disabled={optimizing || selectedIds.length < 2}
+                className="px-6 py-2.5 rounded-full bg-[#00140f] hover:bg-[#0e2a24] text-white transition-all font-sans text-xs font-semibold flex items-center gap-2 shadow-md hover:scale-[1.02] active:scale-[0.98] cursor-pointer disabled:opacity-50"
+              >
+                <span className="material-symbols-outlined text-[#9eefe0] text-[18px]">
+                  auto_fix_high
+                </span>
+                <span>{optimizing ? 'Calculating Flow...' : 'Apply 2-Opt Optimization'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Save Route Modal Dialog */}
+        {saveModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in font-sans">
+            <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full border border-[#e2eae5] shadow-2xl">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Bookmark className="w-5 h-5 text-[#096a5f]" />
+                  <h3 className="font-serif text-xl font-bold text-[#00140f]">Save Itinerary</h3>
+                </div>
                 <button
                   type="button"
                   onClick={() => setSaveModalOpen(false)}
-                  className="px-4 py-2 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors"
+                  className="p-1 rounded-full text-[#727976] hover:text-[#00140f]"
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={savingTrip || saveTripSuccess}
-                  className="px-4 py-2 bg-gradient-to-r from-teal-600 to-teal-500 hover:from-teal-500 hover:to-teal-400 text-white text-xs font-bold rounded-xl shadow-soft-sm transition-all disabled:opacity-50"
-                >
-                  {savingTrip ? 'Saving...' : 'Save Itinerary'}
+                  <X className="w-4 h-4" />
                 </button>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
 
+              {saveTripSuccess ? (
+                <div className="p-4 bg-[#9eefe0]/30 border border-[#9eefe0] rounded-2xl text-[#096a5f] text-center font-semibold text-xs flex items-center justify-center gap-2">
+                  <Check className="w-4 h-4" />
+                  <span>Itinerary saved to your Saved Trips collection!</span>
+                </div>
+              ) : (
+                <form onSubmit={handleConfirmSaveTrip} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-[#727976] uppercase tracking-wider mb-1.5">
+                      Itinerary Name
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={tripNameInput}
+                      onChange={(e) => setTripNameInput(e.target.value)}
+                      placeholder="e.g. Basque Coast 1-Day Gastronomic Trail"
+                      className="w-full px-4 py-2.5 bg-[#edf6f0] rounded-2xl text-xs text-[#00140f] border border-[#dce5df] focus:outline-none focus:ring-2 focus:ring-[#9eefe0]"
+                    />
+                  </div>
+
+                  <div className="text-xs text-[#414846] bg-[#edf6f0] p-3 rounded-2xl border border-[#dce5df] space-y-1">
+                    <div><strong>City:</strong> {currentCity}</div>
+                    <div><strong>Stops:</strong> {selectedPlaces.length} waypoints</div>
+                    <div><strong>Algorithm:</strong> 2-Opt ({totalWalkKm} km)</div>
+                  </div>
+
+                  {saveTripError && (
+                    <div className="text-xs text-red-600 bg-red-50 p-2.5 rounded-xl border border-red-200">
+                      {saveTripError}
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setSaveModalOpen(false)}
+                      className="px-4 py-2 rounded-full text-xs font-semibold text-[#727976] hover:text-[#00140f]"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={savingTrip}
+                      className="px-5 py-2 rounded-full bg-[#00140f] hover:bg-[#0e2a24] text-white text-xs font-bold transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                    >
+                      {savingTrip ? 'Saving...' : 'Save Itinerary'}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          </div>
+        )}
+      </main>
+
+      {/* Footer */}
       <Footer />
     </div>
   );

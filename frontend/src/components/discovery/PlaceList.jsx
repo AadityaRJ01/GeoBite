@@ -44,11 +44,11 @@ export default function PlaceList({
   return (
     <div
       ref={listRef}
-      className="space-y-3.5 pr-1"
+      className="space-y-4"
       aria-label="List of discovered places"
     >
       {/* Places Card List */}
-      <div className="space-y-3.5">
+      <div className="space-y-4">
         {places.map((place) => (
           <PlaceCard
             key={place.id}
@@ -62,12 +62,12 @@ export default function PlaceList({
 
       {/* Backend Pagination Bar */}
       {pagination && totalPages > 1 && (
-        <div className="bg-white rounded-2xl p-4 border border-forest-100 shadow-soft-sm flex flex-col sm:flex-row items-center justify-between gap-3 mt-4">
-          <div className="text-xs text-slate-600 font-medium flex items-center gap-1.5">
-            <Layers className="w-4 h-4 text-teal-600 shrink-0" />
+        <div className="bg-white rounded-3xl p-4 border border-[#e2eae5] shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3 mt-4">
+          <div className="text-xs text-[#414846] font-sans flex items-center gap-1.5">
+            <Layers className="w-4 h-4 text-[#096a5f] shrink-0" />
             <span>
-              Showing <strong className="text-forest-950 font-bold">{startItem}–{endItem}</strong> of{' '}
-              <strong className="text-forest-950 font-bold">{total}</strong> places
+              Showing <strong className="text-[#00140f] font-bold">{startItem}–{endItem}</strong> of{' '}
+              <strong className="text-[#00140f] font-bold">{total}</strong> verified spots
             </span>
           </div>
 
@@ -77,15 +77,15 @@ export default function PlaceList({
               id="pagination-prev-btn"
               onClick={() => onPageChange && onPageChange(page - 1)}
               disabled={page <= 1 || loading}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold border border-sand-300 bg-sand-50 hover:bg-sand-100 text-forest-900 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer shadow-soft-sm"
+              className="inline-flex items-center gap-1 px-3.5 py-1.5 rounded-full text-xs font-semibold border border-[#dce5df] bg-[#edf6f0] hover:bg-[#e2eae5] text-[#00140f] disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
               title="Go to previous page"
             >
-              <ChevronLeft className="w-4 h-4" />
+              <ChevronLeft className="w-3.5 h-3.5" />
               <span>Previous</span>
             </button>
 
-            <span className="text-xs font-bold px-3 py-1.5 rounded-xl bg-forest-900 text-white shadow-soft-sm">
-              Page {page} of {totalPages}
+            <span className="text-xs font-bold px-3 py-1.5 rounded-full bg-[#00140f] text-white shadow-xs">
+              {page} / {totalPages}
             </span>
 
             <button
@@ -93,11 +93,11 @@ export default function PlaceList({
               id="pagination-next-btn"
               onClick={() => onPageChange && onPageChange(page + 1)}
               disabled={page >= totalPages || loading}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold border border-sand-300 bg-sand-50 hover:bg-sand-100 text-forest-900 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer shadow-soft-sm"
+              className="inline-flex items-center gap-1 px-3.5 py-1.5 rounded-full text-xs font-semibold border border-[#dce5df] bg-[#edf6f0] hover:bg-[#e2eae5] text-[#00140f] disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
               title="Go to next page"
             >
               <span>Next</span>
-              <ChevronRight className="w-4 h-4" />
+              <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
